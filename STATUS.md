@@ -17,7 +17,7 @@
 - [x] `requirements.txt` - 依赖列表（已更新）
 - [x] `.env` 配置文件
 
-### 阶段 2：算明白 - 进行中 (40% 完成)
+### 阶段 2：算明白 - 进行中 (50% 完成)
 - [x] **`app/main.py`** ✨ 完成
   - FastAPI 应用初始化
   - 生命周期管理（启动、关闭）
@@ -32,6 +32,10 @@
   - [x] `gold.py` - 黄金 SGE 现货 + Fallback 机制
   - [x] `router.py` - 多资产统一路由 + 批量查询优化
   - [x] `__init__.py` - 公开 API 导出
+
+- [x] **`app/pnl_engine/`** ✨ 完成 (2.2)
+  - [x] `calculator.py` - 加权平均成本法 + PnL 计算（220 行）
+  - [x] `__init__.py` - 导出 calculate_portfolio()
 
 ## 🚧 进行中
 

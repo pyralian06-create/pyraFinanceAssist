@@ -6,3 +6,7 @@
 - 盈亏计算：结合最新价实时计算浮动盈亏（Floating PnL）和盈亏比例
 - 汇总分析：计算整体账户规模、历史实现盈亏、按资产分类过滤
 """
+
+from app.pnl_engine.calculator import calculate_portfolio
+
+__all__ = ['calculate_portfolio']
