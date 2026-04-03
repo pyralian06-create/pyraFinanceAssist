@@ -111,14 +111,13 @@ def root():
 
 
 # ==================== API 路由挂载 ====================
-# TODO: 阶段 2 - 当实现 API 路由时取消注释
-# from app.api.trades import router as trades_router
-# from app.api.portfolio import router as portfolio_router
-# from app.api.alerts import router as alerts_router
-#
-# app.include_router(trades_router, prefix="/api/trades", tags=["Trades"])
-# app.include_router(portfolio_router, prefix="/api/portfolio", tags=["Portfolio"])
-# app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
+from app.api.trades import router as trades_router
+from app.api.portfolio import router as portfolio_router
+from app.api.alerts import router as alerts_router
+
+app.include_router(trades_router, prefix="/api/trades", tags=["Trades"])
+app.include_router(portfolio_router, prefix="/api/portfolio", tags=["Portfolio"])
+app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
 
 
 # ==================== 应用入口 ====================
