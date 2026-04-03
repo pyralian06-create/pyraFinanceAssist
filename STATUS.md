@@ -17,23 +17,31 @@
 - [x] `requirements.txt` - 依赖列表（已更新）
 - [x] `.env` 配置文件
 
-### 阶段 2：算明白 - 进行中
-- [x] **`app/main.py`** ✨ 新增
+### 阶段 2：算明白 - 进行中 (40% 完成)
+- [x] **`app/main.py`** ✨ 完成
   - FastAPI 应用初始化
   - 生命周期管理（启动、关闭）
   - 中间件配置（CORS、异常处理）
   - 基础路由（/health, /）
   - 数据库自动初始化
 
+- [x] **`app/data_fetcher/`** ✨ 完成 (2.1)
+  - [x] `schemas.py` - QuoteData / HistoricalBar 统一数据结构
+  - [x] `stock_a.py` - A股 实时 + 历史（全市场缓存）
+  - [x] `fund.py` - 基金三类型自动识别 + 数据路由
+  - [x] `gold.py` - 黄金 SGE 现货 + Fallback 机制
+  - [x] `router.py` - 多资产统一路由 + 批量查询优化
+  - [x] `__init__.py` - 公开 API 导出
+
 ## 🚧 进行中
 
-### 阶段 2：算明白（剩余）
-- [ ] `app/data_fetcher/` - 行情数据接入
-  - [ ] `router.py` - 多源路由
-  - [ ] `stock_a.py` - A股接入
-  - [ ] `fund.py` - 基金接入
-  - [ ] `gold.py` - 黄金接入
-  - [ ] `us_stock.py` - 美股接入
+### 阶段 2：算明白（剩余，2.2-2.3）
+- [ ] `app/pnl_engine/calculator.py` - 持仓与盈亏计算（2.2）
+- [ ] `app/ledger/service.py` - 交易 CRUD 业务逻辑（2.2）
+- [ ] `app/api/` - FastAPI 路由层（2.2-2.3）
+  - [ ] `trades.py` - /api/trades
+  - [ ] `portfolio.py` - /api/portfolio/summary
+  - [ ] `alerts.py` - /api/alerts
 - [ ] `app/ledger/service.py` - CRUD 业务逻辑
 - [ ] `app/pnl_engine/calculator.py` - 持仓与盈亏计算
 - [ ] `app/api/` - FastAPI 路由层
