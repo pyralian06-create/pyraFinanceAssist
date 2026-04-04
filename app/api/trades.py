@@ -17,6 +17,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=TradeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TradeResponse, status_code=status.HTTP_201_CREATED)  # 支持不带斜杠
 def create_trade(
     trade: TradeCreate,
     db: Session = Depends(get_db)
@@ -60,6 +61,7 @@ def create_trade(
 
 
 @router.get("/", response_model=List[TradeResponse])
+@router.get("", response_model=List[TradeResponse])  # 支持不带斜杠的路由
 def list_trades(
     asset_type: Optional[str] = Query(None, description="按资产大类过滤"),
     symbol: Optional[str] = Query(None, description="按标的代码过滤"),
@@ -69,7 +71,7 @@ def list_trades(
     查询交易流水列表
 
     支持组合过滤：
-    - GET /api/trades — 全部交易
+    - GET /api/trades 或 /api/trades/ — 全部交易
     - GET /api/trades?asset_type=STOCK_A — A 股交易
     - GET /api/trades?symbol=sh600519 — 特定标的交易
     - GET /api/trades?asset_type=STOCK_A&symbol=sh600519 — 同时过滤

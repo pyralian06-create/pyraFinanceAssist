@@ -17,6 +17,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=AlertRuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AlertRuleResponse, status_code=status.HTTP_201_CREATED)  # 支持不带斜杠
 def create_alert_rule(
     rule: AlertRuleCreate,
     db: Session = Depends(get_db)
@@ -63,6 +64,7 @@ def create_alert_rule(
 
 
 @router.get("/", response_model=List[AlertRuleResponse])
+@router.get("", response_model=List[AlertRuleResponse])  # 支持不带斜杠
 def list_alert_rules(
     is_active: Optional[bool] = Query(None, description="按启用状态过滤: true=启用, false=禁用"),
     db: Session = Depends(get_db)
@@ -71,7 +73,7 @@ def list_alert_rules(
     查询告警规则列表
 
     支持按启用状态过滤：
-    - GET /api/alerts — 全部规则
+    - GET /api/alerts 或 /api/alerts/ — 全部规则
     - GET /api/alerts?is_active=true — 仅启用的规则
     - GET /api/alerts?is_active=false — 仅禁用的规则
     """
