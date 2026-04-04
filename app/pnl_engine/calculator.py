@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.models.trade import Trade
-from app.data_fetcher import get_quote_batch
+from app.data_fetcher import get_quote_batch_direct
 from app.schemas.portfolio import PositionDetail, PortfolioSummary
 
 
@@ -172,7 +172,7 @@ def calculate_portfolio(
     ]
 
     # 4. 批量获取行情
-    quotes = get_quote_batch(active_positions) if active_positions else {}
+    quotes = get_quote_batch_direct(active_positions) if active_positions else {}
 
     # 5. 构建持仓明细列表
     positions: List[PositionDetail] = []

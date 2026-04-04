@@ -40,25 +40,11 @@ def get_portfolio_summary(
     """
     start_time = time.time()
 
-    # 检查缓存是否就绪
-    if get_cache_data() is None:
-        logger.warning("📊 portfolio/summary 请求时缓存未就绪，返回 202")
-        raise HTTPException(
-            status_code=202,
-            detail="系统正在初始化行情数据，请稍候几分钟后重试"
-        )
-
     result = calculate_portfolio(db, asset_type_filter=asset_type)
 
-    # 获取缓存数据更新时间（取最旧的时间，作为保守估计）
-    cache_update_time = stock_cache_manager.get_update_time()
-    etf_update_time = _cache_etf.get_update_time()
-    lof_update_time = _cache_lof.get_update_time()
-
-    # 取最旧的更新时间（最保守的数据时间）
-    update_times = [t for t in [cache_update_time, etf_update_time, lof_update_time] if t is not None]
-    if update_times:
-        result.data_update_time = min(update_times)
+    # 直查数据即为最新，设置为当前时间
+    from datetime import datetime as _dt
+    result.data_update_time = _dt.now()
 
     elapsed = time.time() - start_time
 

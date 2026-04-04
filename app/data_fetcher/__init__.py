@@ -25,13 +25,15 @@
   bars = get_history('STOCK_A', 'sh600519', start_date='20250101', end_date='20251231')
 """
 
-from .router import get_quote, get_quote_batch, get_history
+from .router import get_quote, get_quote_batch, get_history, get_quote_direct, get_quote_batch_direct
 from .schemas import QuoteData, HistoricalBar
 
 __all__ = [
     'get_quote',
     'get_quote_batch',
     'get_history',
+    'get_quote_direct',
+    'get_quote_batch_direct',
     'QuoteData',
     'HistoricalBar',
 ]

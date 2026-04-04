@@ -112,6 +112,47 @@ def get_quote(symbol: str) -> QuoteData:
         raise ValueError(f"无法获取 A股 {symbol} 行情: {e}")
 
 
+def get_quote_direct(symbol: str) -> QuoteData:
+    """直接查询单个 A股 实时行情（不依赖缓存，按需调用）
+
+    使用 stock_bid_ask_em：24h可用，交易时为实时价，非交易时为最新收盘。
+    """
+    if ak is None:
+        raise ImportError("akshare not installed")
+
+    norm_symbol = _normalize_symbol(symbol)
+
+    try:
+        logger.info(f"📈 直查 A股 {symbol}...")
+        df = ak.stock_bid_ask_em(symbol=norm_symbol)
+
+        # 转换为 item→value 字典
+        items = dict(zip(df['item'], df['value']))
+
+        current_price = Decimal(str(items['最新']))
+        prev_close = Decimal(str(items.get('昨收', 0)))
+        change_amount = current_price - prev_close
+        change_pct = float(items.get('涨幅', 0))
+
+        quote = QuoteData(
+            symbol=symbol,
+            name="",  # bid_ask 接口不返回股票名称
+            current_price=current_price,
+            previous_close=prev_close,
+            change_amount=change_amount,
+            change_pct=change_pct,
+            volume=None,
+            timestamp=datetime.now(),
+            asset_type="STOCK_A"
+        )
+        logger.info(f"✅ {symbol}: ¥{quote.current_price} ({quote.change_pct:+.2f}%)")
+        return quote
+
+    except Exception as e:
+        logger.error(f"❌ 直查 {symbol} 失败: {e}")
+        raise ValueError(f"无法获取 A股 {symbol} 实时行情: {e}")
+
+
 def get_history(
     symbol: str,
     start_date: Optional[str] = None,

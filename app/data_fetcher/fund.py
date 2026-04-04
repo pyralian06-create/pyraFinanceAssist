@@ -130,6 +130,68 @@ def get_quote(symbol: str, fund_type: Optional[str] = None) -> QuoteData:
         raise ValueError(f"无法获取基金 {symbol}: {e}")
 
 
+def get_quote_direct(symbol: str, fund_type: Optional[str] = None) -> QuoteData:
+    """直接查询单个基金行情（不依赖缓存）
+
+    - ETF: stock_bid_ask_em → 实时价（ETF在交易所上市，可用股票接口）
+    - LOF / 开放式基金: fund_open_fund_info_em → T+1 净值（数据源限制，无法实时）
+    """
+    if ak is None:
+        raise ImportError("akshare not installed")
+
+    if fund_type is None:
+        fund_type = _detect_fund_type(symbol)
+
+    logger.info(f"📈 直查基金 {symbol} ({fund_type})...")
+    try:
+        if fund_type == "ETF":
+            return _get_etf_quote_direct(symbol)
+        else:  # LOF 或 OPEN，用净值接口
+            return _get_nav_quote_direct(symbol)
+    except Exception as e:
+        logger.error(f"❌ 直查基金 {symbol} 失败: {e}")
+        raise ValueError(f"无法获取基金 {symbol}: {e}")
+
+
+def _get_etf_quote_direct(symbol: str) -> QuoteData:
+    """ETF 直查实时价（通过 stock_bid_ask_em，ETF在交易所上市行为同股票）"""
+    df = ak.stock_bid_ask_em(symbol=symbol)
+    items = dict(zip(df['item'], df['value']))
+
+    current_price = Decimal(str(items['最新']))
+    prev_close = Decimal(str(items.get('昨收', 0)))
+    change_amount = current_price - prev_close
+    change_pct = float(items.get('涨幅', 0))
+
+    return QuoteData(
+        symbol=symbol, name="",
+        current_price=current_price,
+        previous_close=prev_close,
+        change_amount=change_amount,
+        change_pct=change_pct,
+        volume=None,
+        timestamp=datetime.now(), asset_type="FUND"
+    )
+
+
+def _get_nav_quote_direct(symbol: str) -> QuoteData:
+    """LOF / 开放式基金直查净值（T+1，数据源本身限制，无法实时）"""
+    df = ak.fund_open_fund_info_em(symbol=symbol, indicator='单位净值走势')
+    if df.empty:
+        raise ValueError(f"基金 {symbol} 无数据")
+    row = df.iloc[-1]
+    nav = Decimal(str(row['单位净值']))
+    change_pct = float(row.get('日增长率', 0)) if pd.notna(row.get('日增长率')) else 0.0
+    prev_nav = nav / Decimal(str(1 + change_pct / 100)) if change_pct != 0 else nav
+    return QuoteData(
+        symbol=symbol, name="", current_price=nav,
+        previous_close=prev_nav,
+        change_amount=nav - prev_nav,
+        change_pct=change_pct,
+        volume=None, timestamp=datetime.now(), asset_type="FUND"
+    )
+
+
 def _get_etf_quote(symbol: str) -> QuoteData:
     """查询单个 ETF 实时行情（仅从缓存查询）"""
     try:

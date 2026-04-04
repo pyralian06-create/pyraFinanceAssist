@@ -131,3 +131,45 @@ def get_history(
     except Exception as e:
         logger.error(f"❌ 获取 {asset_type} {symbol} 历史数据失败: {e}")
         raise
+
+
+def get_quote_direct(asset_type: str, symbol: str) -> QuoteData:
+    """直接查询单个资产最新行情（不依赖缓存）"""
+    asset_type = asset_type.upper()
+    try:
+        if asset_type == "STOCK_A":
+            return stock_a.get_quote_direct(symbol)
+        elif asset_type == "FUND":
+            return fund.get_quote_direct(symbol)
+        elif asset_type == "GOLD_SPOT":
+            return gold.get_quote(symbol)  # gold 已是直查
+        else:
+            raise ValueError(f"不支持的资产类型: {asset_type}")
+    except Exception as e:
+        logger.error(f"❌ 直查 {asset_type} {symbol} 失败: {e}")
+        raise
+
+
+def get_quote_batch_direct(
+    positions: List[Tuple[str, str]]
+) -> Dict[Tuple[str, str], QuoteData]:
+    """并发直查多个资产行情（不依赖缓存，ThreadPoolExecutor 并发）"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    results: Dict[Tuple[str, str], QuoteData] = {}
+    if not positions:
+        return results
+
+    logger.info(f"🔄 并发直查 {len(positions)} 个持仓...")
+    with ThreadPoolExecutor(max_workers=min(len(positions), 5)) as executor:
+        future_to_pos = {
+            executor.submit(get_quote_direct, asset_type, symbol): (asset_type, symbol)
+            for asset_type, symbol in positions
+        }
+        for future in as_completed(future_to_pos):
+            pos = future_to_pos[future]
+            try:
+                results[pos] = future.result()
+            except Exception as e:
+                logger.warning(f"⚠️ 跳过 {pos}: {e}")
+                results[pos] = None
+    return results
