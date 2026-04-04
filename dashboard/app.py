@@ -35,7 +35,7 @@ def get_portfolio_data(asset_type_filter=None):
     if asset_type_filter:
         params["asset_type"] = asset_type_filter
 
-    r = httpx.get(f"{API_BASE}/portfolio/summary", params=params, timeout=10)
+    r = httpx.get(f"{API_BASE}/portfolio/summary", params=params, timeout=30)
     if r.status_code != 200:
         st.error(f"获取持仓数据失败: {r.status_code}")
         return None
@@ -74,11 +74,11 @@ def format_pnl_color(pnl_str):
 # ────────────────────────────────────────────────────────────────
 
 st.title("📊 持仓看板")
-col1, col2 = st.columns([0.9, 0.1])
+col1, col2 = st.columns([0.8, 0.2])
 with col1:
     st.markdown("实时持仓汇总 · PnL 分析")
 with col2:
-    if st.button("🔄 刷新", key="main_refresh"):
+    if st.button("🔄 刷新数据", key="main_refresh"):
         st.cache_data.clear()
         st.rerun()
 

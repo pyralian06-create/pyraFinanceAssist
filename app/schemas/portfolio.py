@@ -25,6 +25,7 @@ class PositionDetail(BaseModel):
 
     asset_type: str
     symbol: str
+    name: Optional[str] = None  # 资产名称（从行情缓存获取）
     holding_quantity: Decimal  # 持仓数量
     avg_cost: Decimal  # 加权平均成本
     current_price: Decimal  # 当前市价
