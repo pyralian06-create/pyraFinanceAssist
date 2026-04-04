@@ -616,6 +616,237 @@ python3 -m uvicorn app.main:app --reload
 
 ---
 
+---
+
+## 完整测试流程
+
+本节展示从服务启动到查询持仓的完整流程，包括缓存加载和手动刷新。
+
+### 启动服务
+```bash
+python3 -m uvicorn app.main:app --reload --log-level info
+```
+
+### 1. 健康检查（立即返回）
+```bash
+curl -X GET http://localhost:8000/health
+```
+
+**预期响应** (200 OK):
+```json
+{
+  "status": "healthy",
+  "service": "Personal Finance Assistant",
+  "version": "0.1.0"
+}
+```
+
+### 2. 查询缓存状态（缓存加载中）
+```bash
+curl -X GET http://localhost:8000/api/portfolio/cache-status
+```
+
+**预期响应** (第一阶段，缓存正在加载，约 5-10 分钟):
+```json
+{
+  "stock_a": {
+    "name": "A股全市场行情",
+    "is_refreshing": true,
+    "last_update_time": null,
+    "is_ready": false,
+    "elapsed_seconds": 87.5,
+    "progress": "23%|##3       | 13/58 [02:05<07:12,  8.95s/it]"
+  },
+  "etf": {
+    "name": "ETF全市场行情",
+    "is_refreshing": true,
+    "last_update_time": null,
+    "is_ready": false,
+    "elapsed_seconds": 85.2,
+    "progress": "64%|######4   | 9/14 [01:20<00:45,  9.05s/it]"
+  },
+  "lof": {
+    "name": "LOF全市场行情",
+    "is_refreshing": false,
+    "last_update_time": "2026-04-04T15:15:28.683404",
+    "is_ready": true,
+    "elapsed_seconds": null,
+    "progress": ""
+  }
+}
+```
+
+**说明**:
+- `progress` 字段包含实时的 tqdm 进度条
+- 三个数据源并发刷新，各自独立显示进度
+- 当 `is_ready=true` 时，可以调用 `/summary` 获取该数据源的信息
+
+### 3. 等待缓存加载完成
+
+定期轮询缓存状态，直到所有数据源都加载完成：
+
+```bash
+# 每 5 秒检查一次，直到所有缓存都准备好
+while true; do
+  STATUS=$(curl -s http://localhost:8000/api/portfolio/cache-status)
+  READY=$(echo "$STATUS" | jq '.stock_a.is_ready and .etf.is_ready and .lof.is_ready')
+  
+  if [ "$READY" = "true" ]; then
+    echo "✅ 所有缓存加载完成！"
+    break
+  fi
+  
+  echo -n "."
+  sleep 5
+done
+```
+
+### 4. 缓存加载完成后查询状态
+```bash
+curl -X GET http://localhost:8000/api/portfolio/cache-status
+```
+
+**预期响应** (所有缓存已就绪):
+```json
+{
+  "stock_a": {
+    "name": "A股全市场行情",
+    "is_refreshing": false,
+    "last_update_time": "2026-04-04T15:22:45.123456",
+    "is_ready": true,
+    "elapsed_seconds": null,
+    "progress": ""
+  },
+  "etf": {
+    "name": "ETF全市场行情",
+    "is_refreshing": false,
+    "last_update_time": "2026-04-04T15:21:30.654321",
+    "is_ready": true,
+    "elapsed_seconds": null,
+    "progress": ""
+  },
+  "lof": {
+    "name": "LOF全市场行情",
+    "is_refreshing": false,
+    "last_update_time": "2026-04-04T15:15:28.683404",
+    "is_ready": true,
+    "elapsed_seconds": null,
+    "progress": ""
+  }
+}
+```
+
+### 5. 获取持仓汇总（完整信息）
+```bash
+curl -X GET http://localhost:8000/api/portfolio/summary
+```
+
+**预期响应** (缓存就绪，秒级响应):
+```json
+{
+  "total_assets": 177086.49,
+  "total_pnl": -23747.50,
+  "total_pnl_percent": "-11.82%",
+  "realized_pnl": 0,
+  "data_update_time": "2026-04-04T15:15:28.683404",
+  "positions": [
+    {
+      "asset_type": "STOCK_A",
+      "symbol": "sh600519",
+      "holding_quantity": "100.0",
+      "avg_cost": "1700.55",
+      "current_price": "1460.0",
+      "floating_pnl": -24055.0,
+      "pnl_percent": "-14.15%"
+    },
+    {
+      "asset_type": "FUND",
+      "symbol": "005827",
+      "holding_quantity": "1030.21",
+      "avg_cost": "1.456",
+      "current_price": "1.480",
+      "floating_pnl": 24.72,
+      "pnl_percent": "1.65%"
+    }
+  ]
+}
+```
+
+### 6. 按资产类型过滤
+```bash
+# 仅查看 A 股
+curl -X GET "http://localhost:8000/api/portfolio/summary?asset_type=STOCK_A"
+
+# 仅查看基金
+curl -X GET "http://localhost:8000/api/portfolio/summary?asset_type=FUND"
+
+# 仅查看黄金
+curl -X GET "http://localhost:8000/api/portfolio/summary?asset_type=GOLD_SPOT"
+```
+
+### 7. 查看全市场缓存数据
+
+```bash
+# 查看前 50 条（默认）
+curl -X GET http://localhost:8000/api/portfolio/market-cache
+
+# 分页查询（第 100-150 条）
+curl -X GET "http://localhost:8000/api/portfolio/market-cache?skip=100&limit=50"
+```
+
+**预期响应**:
+```json
+{
+  "total": 5835,
+  "skip": 0,
+  "limit": 50,
+  "returned": 50,
+  "data": [
+    {
+      "代码": "600519",
+      "名称": "贵州茅台",
+      "最新价": "1460.0",
+      "昨收": "1465.0",
+      "涨跌额": "-5.0",
+      "涨跌幅": "-0.34",
+      "成交量": "12345678.0"
+    }
+  ]
+}
+```
+
+### 8. 手动刷新缓存
+
+```bash
+curl -X POST http://localhost:8000/api/portfolio/refresh-cache
+```
+
+**预期响应** (刷新成功，200 OK，耗时 5-10 分钟):
+```json
+{
+  "message": "缓存刷新完成",
+  "elapsed_seconds": 567.3,
+  "data_update_time": "2026-04-04T15:35:12.987654"
+}
+```
+
+**预期响应** (刷新已在进行中，409 Conflict):
+```json
+{
+  "detail": "缓存刷新已在进行中"
+}
+```
+
+### 测试注意事项
+
+1. **首次加载耗时长** — A 股全市场数据约 5-8 分钟（5835 只股票）
+2. **进度实时显示** — 使用 `cache-status` 端点实时查看加载进度
+3. **并发刷新** — 三个数据源（A股、ETF、LOF）并发刷新，各自独立显示进度
+4. **手动和自动互斥** — 手动刷新和定时刷新（5分钟周期）互斥运行
+5. **缓存永不清空** — 即使刷新失败，旧数据仍可用
+
+---
+
 ## 快速命令总结
 
 ```bash
