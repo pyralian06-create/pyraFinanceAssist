@@ -131,17 +131,30 @@ curl -X GET http://localhost:8000/api/portfolio/cache-status
 - `elapsed_seconds`: 当前刷新已耗时（仅在 `is_refreshing=true` 时有值）
 - `progress`: tqdm 进度条信息（如：`95%|█████████▍| 55/58 [05:57<00:19,  6.64s/it]`）
 
+**进度隔离说明**：
+- 三个数据源（A股、ETF、LOF）**并发刷新**时，各自的进度条**分线程隔离**
+- 使用 `threading.local` 存储，不会互相覆盖
+- 每个缓存各自维护独立的进度信息
+
 **前端应用示例**：
 ```javascript
-// 定期轮询缓存状态，更新进度条
+// 定期轮询缓存状态，实时显示各数据源进度
 setInterval(() => {
   fetch('/api/portfolio/cache-status')
     .then(r => r.json())
     .then(data => {
-      // 如果 A股 正在刷新，显示进度
+      // A股进度（如果正在刷新）
       if (data.stock_a.is_refreshing) {
-        console.log('A股进度:', data.stock_a.progress);
-        updateProgressBar(data.stock_a.progress);
+        console.log('A股:', data.stock_a.progress);
+        // 95%|█████████▍| 55/58 [05:57<00:19,  6.64s/it]
+      }
+      // ETF 进度（独立显示）
+      if (data.etf.is_refreshing) {
+        console.log('ETF:', data.etf.progress);
+      }
+      // LOF 进度（独立显示）
+      if (data.lof.is_refreshing) {
+        console.log('LOF:', data.lof.progress);
       }
     });
 }, 1000);
