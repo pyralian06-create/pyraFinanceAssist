@@ -146,3 +146,105 @@ def manual_refresh_cache():
         "elapsed_seconds": round(elapsed, 1),
         "data_update_time": min(update_times).isoformat() if update_times else None,
     }
+
+
+@router.get("/symbol-search")
+def search_symbols(
+    q: str = Query(..., min_length=1, description="搜索关键词（代码或名称）"),
+    asset_type: str = Query("STOCK_A", description="资产类型: STOCK_A | FUND"),
+    limit: int = Query(15, ge=1, le=50, description="返回结果最多数量")
+):
+    """
+    按代码或名称模糊搜索标的（用于交易录入时验证代码）
+
+    支持资产类型：
+    - STOCK_A: 搜索 A股全市场缓存
+    - FUND: 合并搜索 ETF + LOF 缓存
+
+    返回：
+    - 缓存未就绪返回 HTTP 202
+    - 否则返回匹配结果列表 [{code, name, price, fund_type}, ...]
+    """
+    asset_type = asset_type.upper()
+    q_clean = q.strip().lower()
+
+    if asset_type == "STOCK_A":
+        df = get_cache_data()
+        if df is None:
+            raise HTTPException(
+                status_code=202,
+                detail="A股缓存未就绪，请稍候后重试或直接输入代码"
+            )
+
+        # 代码匹配：去掉用户可能输入的 sh/sz 前缀后匹配
+        q_code = q_clean.lstrip("shsz")
+        mask = (
+            df['代码'].astype(str).str.contains(q_code, case=False, na=False) |
+            df['名称'].astype(str).str.contains(q, case=False, na=False)
+        )
+        matched = df[mask].head(limit)
+
+        results = []
+        for _, row in matched.iterrows():
+            results.append({
+                "code": str(row["代码"]),
+                "name": str(row.get("名称", "")),
+                "price": float(row.get("最新价", 0)) if pd.notna(row.get("最新价")) else 0,
+                "fund_type": None
+            })
+
+        logger.info(f"✅ A股搜索 '{q}' → {len(results)} 条结果")
+        return {"results": results}
+
+    elif asset_type == "FUND":
+        etf_df = _cache_etf.get_data()
+        lof_df = _cache_lof.get_data()
+
+        if etf_df is None and lof_df is None:
+            raise HTTPException(
+                status_code=202,
+                detail="基金缓存未就绪，请稍候后重试或直接输入代码"
+            )
+
+        results = []
+
+        # 搜索 ETF 缓存
+        if etf_df is not None:
+            mask = (
+                etf_df['代码'].astype(str).str.contains(q_clean, case=False, na=False) |
+                etf_df['名称'].astype(str).str.contains(q, case=False, na=False)
+            )
+            for _, row in etf_df[mask].iterrows():
+                results.append({
+                    "code": str(row["代码"]),
+                    "name": str(row.get("名称", "")),
+                    "price": float(row.get("最新价", 0)) if pd.notna(row.get("最新价")) else 0,
+                    "fund_type": "ETF"
+                })
+                if len(results) >= limit:
+                    break
+
+        # 搜索 LOF 缓存（如果还有配额）
+        if len(results) < limit and lof_df is not None:
+            mask = (
+                lof_df['代码'].astype(str).str.contains(q_clean, case=False, na=False) |
+                lof_df['名称'].astype(str).str.contains(q, case=False, na=False)
+            )
+            for _, row in lof_df[mask].iterrows():
+                if len(results) >= limit:
+                    break
+                results.append({
+                    "code": str(row["代码"]),
+                    "name": str(row.get("名称", "")),
+                    "price": float(row.get("最新价", 0)) if pd.notna(row.get("最新价")) else 0,
+                    "fund_type": "LOF"
+                })
+
+        logger.info(f"✅ 基金搜索 '{q}' → {len(results)} 条结果")
+        return {"results": results[:limit]}
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"symbol-search 不支持资产类型 '{asset_type}'，仅支持 STOCK_A | FUND"
+        )
