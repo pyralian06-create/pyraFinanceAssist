@@ -89,6 +89,48 @@ HTTP Status: 202 Accepted
 
 ## 缓存管理
 
+### 查询缓存刷新状态
+```bash
+curl -X GET http://localhost:8000/api/portfolio/cache-status
+```
+
+**预期响应** (缓存正在刷新):
+```json
+{
+  "stock_a": {
+    "name": "A股全市场行情",
+    "is_refreshing": true,
+    "last_update_time": "2026-04-04T11:00:00.123456",
+    "is_ready": true,
+    "elapsed_seconds": 45.3,
+    "progress": "正在处理第 1234 条记录..."
+  },
+  "etf": {
+    "name": "ETF全市场行情",
+    "is_refreshing": false,
+    "last_update_time": "2026-04-04T11:00:10.654321",
+    "is_ready": true,
+    "elapsed_seconds": null,
+    "progress": ""
+  },
+  "lof": {
+    "name": "LOF全市场行情",
+    "is_refreshing": false,
+    "last_update_time": "2026-04-04T11:00:15.987654",
+    "is_ready": true,
+    "elapsed_seconds": null,
+    "progress": ""
+  }
+}
+```
+
+**字段说明**:
+- `is_refreshing`: 是否正在刷新（用于判断是否可以手动触发）
+- `is_ready`: 缓存是否已加载可用（若为 false，查询会返回 202）
+- `last_update_time`: 最后更新的时间戳
+- `elapsed_seconds`: 当前刷新已耗时（仅在 `is_refreshing=true` 时有值）
+- `progress`: 刷新过程中从 ak 库捕获的进度信息（如：正在处理第 N 条记录）
+
 ### 手动触发缓存刷新
 ```bash
 # 立即刷新所有缓存（A股 + ETF + LOF）

@@ -14,7 +14,7 @@ import pandas as pd
 from app.models.database import get_db
 from app.pnl_engine import calculate_portfolio
 from app.schemas.portfolio import PortfolioSummary
-from app.data_fetcher.stock_a import is_cache_loading, is_cache_ready, get_cache_data, _cache_manager as stock_cache_manager
+from app.data_fetcher.stock_a import get_cache_data, _cache_manager as stock_cache_manager
 from app.data_fetcher.fund import _cache_etf, _cache_lof
 from app.cache_refresh import do_full_refresh
 
@@ -40,9 +40,9 @@ def get_portfolio_summary(
     """
     start_time = time.time()
 
-    # 如果还在加载缓存，返回初始化提示
-    if is_cache_loading():
-        logger.warning("📊 portfolio/summary 请求时缓存仍在加载中，返回 202")
+    # 检查缓存是否就绪
+    if get_cache_data() is None:
+        logger.warning("📊 portfolio/summary 请求时缓存未就绪，返回 202")
         raise HTTPException(
             status_code=202,
             detail="系统正在初始化行情数据，请稍候几分钟后重试"
@@ -86,18 +86,12 @@ def get_market_cache(
     """
     start_time = time.time()
 
-    if is_cache_loading():
-        logger.info("📊 market-cache 请求时缓存仍在加载中，返回 202")
+    cache_df = get_cache_data()
+    if cache_df is None:
+        logger.info("📊 market-cache 请求时缓存未就绪，返回 202")
         raise HTTPException(
             status_code=202,
             detail="系统正在初始化行情数据，请稍候几分钟后重试"
-        )
-
-    cache_df = get_cache_data()
-    if cache_df is None:
-        raise HTTPException(
-            status_code=503,
-            detail="全市场行情缓存未初始化"
         )
 
     # 分页处理
@@ -116,6 +110,25 @@ def get_market_cache(
     elapsed = time.time() - start_time
     logger.info(f"✅ market-cache 返回 {len(paginated_df)} 条记录 (总计 {total_count} 条)，耗时 {elapsed:.3f}s")
     return result
+
+
+@router.get("/cache-status")
+def get_cache_status():
+    """
+    获取缓存刷新状态（A股、ETF、LOF）
+
+    返回每个数据源的刷新进度：
+    - is_refreshing: 是否正在刷新
+    - is_ready: 缓存是否已加载（可用于查询）
+    - last_update_time: 最后更新时间
+    - elapsed_seconds: 当前刷新已耗时（进行中才有值）
+    - progress: 刷新过程中的进度信息（来自ak库日志）
+    """
+    return {
+        "stock_a": stock_cache_manager.get_status(),
+        "etf": _cache_etf.get_status(),
+        "lof": _cache_lof.get_status(),
+    }
 
 
 @router.post("/refresh-cache", status_code=200)
