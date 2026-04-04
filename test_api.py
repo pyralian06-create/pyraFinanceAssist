@@ -106,11 +106,11 @@ def test_progress_capture():
 
     import io
     import threading
-    from app.data_fetcher.cache_manager import _StderrCapture, _thread_local
+    from app.data_fetcher.cache_manager import _StderrCapture, _progress_map, _progress_lock
 
-    # 清空线程本地存储
-    if hasattr(_thread_local, 'progress_map'):
-        _thread_local.progress_map.clear()
+    # 清空全局进度字典
+    with _progress_lock:
+        _progress_map.clear()
 
     # 创建模拟 stderr
     mock_stderr = io.StringIO()
@@ -128,14 +128,13 @@ def test_progress_capture():
         print(f"  输入: {repr(input_str)}")
         capture.write(input_str)
 
-        # 检查是否被正确捕获
-        if hasattr(_thread_local, 'progress_map'):
-            captured = _thread_local.progress_map.get("A股全市场行情", "")
-            print(f"  捕获: {repr(captured)}")
-            assert captured == expected_progress, f"期望 {repr(expected_progress)}，得到 {repr(captured)}"
-            print(f"  ✅ 通过")
-        else:
-            print(f"  ⚠️  未初始化线程本地存储")
+        # 检查是否被正确捕获（从全局进度字典）
+        with _progress_lock:
+            captured = _progress_map.get("A股全市场行情", "")
+
+        print(f"  捕获: {repr(captured)}")
+        assert captured == expected_progress, f"期望 {repr(expected_progress)}，得到 {repr(captured)}"
+        print(f"  ✅ 通过")
 
     print("  ✅ 进度条捕获测试通过\n")
 

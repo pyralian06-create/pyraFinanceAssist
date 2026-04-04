@@ -2,7 +2,7 @@
 缓存管理模块（简化版）
 
 仅提供定时刷新功能，缓存永不清空。
-支持从 ak 库 tqdm 进度条中捕获刷新进度（分线程隔离）。
+支持从 ak 库 tqdm 进度条中捕获刷新进度（全局共享）。
 """
 
 import logging
@@ -10,15 +10,16 @@ import threading
 import time
 import io
 from datetime import datetime
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Dict
 from app.config import settings
 
-# 线程本地存储，用于隔离每个线程的进度信息
-_thread_local = threading.local()
+# 全局进度字典 + 锁（所有线程共享，HTTP 请求线程也能看到）
+_progress_lock = threading.Lock()
+_progress_map: Dict[str, str] = {}
 
 
 class _StderrCapture(io.StringIO):
-    """捕获 stderr 以提取 tqdm 进度条信息（线程安全）"""
+    """捕获 stderr 以提取 tqdm 进度条信息（全局共享）"""
 
     def __init__(self, cache_name: str, original_stderr):
         super().__init__()
@@ -26,7 +27,7 @@ class _StderrCapture(io.StringIO):
         self.original_stderr = original_stderr
 
     def write(self, s):
-        """拦截 stderr 写入，提取进度信息（线程本地存储）"""
+        """拦截 stderr 写入，提取进度信息（存到全局字典）"""
         if s:
             # tqdm 使用 \r（回车符）覆盖同一行，所以去掉 \r 后查看内容
             # 例如: "  7%|6         | 4/58 [00:32<07:22,  8.19s/it]\r"
@@ -36,11 +37,10 @@ class _StderrCapture(io.StringIO):
                 # 检查是否看起来像 tqdm 进度条
                 # 特征：包含 % 和 | 和 /（百分比、进度条、计数）
                 if '%' in content and '|' in content and '/' in content:
-                    # 存储到线程本地存储
+                    # 存储到全局进度字典（所有线程可见）
                     progress_text = content[:150]  # 限制长度
-                    if not hasattr(_thread_local, 'progress_map'):
-                        _thread_local.progress_map = {}
-                    _thread_local.progress_map[self.cache_name] = progress_text
+                    with _progress_lock:
+                        _progress_map[self.cache_name] = progress_text
 
         # 同时写到原始 stderr（保持正常输出）
         self.original_stderr.write(s)
@@ -94,17 +94,17 @@ class CacheManager:
                 "last_update_time": ISO8601 时间或 None,
                 "is_ready": bool,
                 "elapsed_seconds": 刷新耗时（进行中才有值）,
-                "progress": "tqdm 进度条（线程隔离）"
+                "progress": "tqdm 进度条（全局共享）"
             }
         """
         elapsed_seconds = None
         if self._refreshing and self._refresh_start_time:
             elapsed_seconds = round(time.time() - self._refresh_start_time, 1)
 
-        # 从线程本地存储获取进度（分线程隔离，不会互相覆盖）
+        # 从全局进度字典获取进度（所有线程可见）
         progress = ""
-        if hasattr(_thread_local, 'progress_map') and self.name in _thread_local.progress_map:
-            progress = _thread_local.progress_map[self.name]
+        with _progress_lock:
+            progress = _progress_map.get(self.name, "")
 
         return {
             "name": self.name,
@@ -126,7 +126,7 @@ class CacheManager:
 
         - 先检查是否已有刷新在进行，若有则跳过
         - 失败时保留旧数据，异常向上抛出
-        - 捕获 tqdm 进度条供状态查询使用（分线程隔离）
+        - 捕获 tqdm 进度条供状态查询使用（全局共享，HTTP 请求线程可见）
         """
         if self._load_func is None:
             logger.warning(f"⚠️ {self.name}未设置加载函数")
@@ -158,9 +158,9 @@ class CacheManager:
             logger.info(f"✅ {self.name}刷新完成: {len(data) if hasattr(data, '__len__') else 'OK'}, 耗时 {elapsed:.1f}s")
         finally:
             sys.stderr = original_stderr
-            # 清理线程本地存储中该缓存的进度记录
-            if hasattr(_thread_local, 'progress_map'):
-                _thread_local.progress_map.pop(self.name, None)
+            # 清理全局进度字典中该缓存的进度记录
+            with _progress_lock:
+                _progress_map.pop(self.name, None)
             with self._lock:
                 self._refreshing = False
                 self._refresh_start_time = None
