@@ -2,33 +2,43 @@
 缓存管理模块（简化版）
 
 仅提供定时刷新功能，缓存永不清空。
-支持从 ak 库日志中捕获刷新进度。
+支持从 ak 库 tqdm 进度条中捕获刷新进度。
 """
 
 import logging
 import threading
 import time
+import io
 from datetime import datetime
 from typing import Optional, Callable, Any
 from app.config import settings
 
 
-class _ProgressCapture(logging.Handler):
-    """捕获 ak 库日志以提取进度信息"""
+class _StderrCapture(io.StringIO):
+    """捕获 stderr 以提取 tqdm 进度条信息"""
 
-    def __init__(self, cache_manager):
+    def __init__(self, cache_manager, original_stderr):
         super().__init__()
         self.cache_manager = cache_manager
+        self.original_stderr = original_stderr
 
-    def emit(self, record):
-        """捕获日志并更新进度"""
-        try:
-            msg = record.getMessage()
-            # 从 ak 库和数据获取日志中提取关键进度信息
-            if any(keyword in msg for keyword in ['正在', '获取', '加载', '完成', 'Processing', 'Fetching']):
-                self.cache_manager._refresh_progress = msg[:200]  # 保留最近的日志（最多200字）
-        except:
-            pass
+    def write(self, s):
+        """拦截 stderr 写入，提取进度信息"""
+        if s and s.strip():
+            # 保留 tqdm 进度条的关键信息（百分比、进度条、当前/总数）
+            # 例如: 95%|█████████▍| 55/58 [05:57<00:19,  6.64s/it]
+            if '%' in s or '|' in s or '/' in s:
+                # 这看起来像是进度条，提取出来
+                progress_text = s.strip()[:150]  # 限制长度
+                self.cache_manager._refresh_progress = progress_text
+
+        # 同时写到原始 stderr（保持正常输出）
+        self.original_stderr.write(s)
+        return len(s)
+
+    def flush(self):
+        """刷新输出"""
+        self.original_stderr.flush()
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +112,7 @@ class CacheManager:
 
         - 先检查是否已有刷新在进行，若有则跳过
         - 失败时保留旧数据，异常向上抛出
-        - 捕获进度日志供状态查询使用
+        - 捕获 tqdm 进度条供状态查询使用
         """
         if self._load_func is None:
             logger.warning(f"⚠️ {self.name}未设置加载函数")
@@ -114,10 +124,11 @@ class CacheManager:
                 return
             self._refreshing = True
 
-        # 添加进度捕获器
-        progress_handler = _ProgressCapture(self)
-        akshare_logger = logging.getLogger("akshare")
-        akshare_logger.addHandler(progress_handler)
+        # 保存原始 stderr，用进度捕获器替换
+        import sys
+        original_stderr = sys.stderr
+        stderr_capture = _StderrCapture(self, original_stderr)
+        sys.stderr = stderr_capture
 
         try:
             logger.info(f"🔄 {self.name}刷新中...")
@@ -133,7 +144,7 @@ class CacheManager:
 
             logger.info(f"✅ {self.name}刷新完成: {len(data) if hasattr(data, '__len__') else 'OK'}, 耗时 {elapsed:.1f}s")
         finally:
-            akshare_logger.removeHandler(progress_handler)
+            sys.stderr = original_stderr
             with self._lock:
                 self._refreshing = False
                 self._refresh_progress = ""

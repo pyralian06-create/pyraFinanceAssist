@@ -129,7 +129,23 @@ curl -X GET http://localhost:8000/api/portfolio/cache-status
 - `is_ready`: 缓存是否已加载可用（若为 false，查询会返回 202）
 - `last_update_time`: 最后更新的时间戳
 - `elapsed_seconds`: 当前刷新已耗时（仅在 `is_refreshing=true` 时有值）
-- `progress`: 刷新过程中从 ak 库捕获的进度信息（如：正在处理第 N 条记录）
+- `progress`: tqdm 进度条信息（如：`95%|█████████▍| 55/58 [05:57<00:19,  6.64s/it]`）
+
+**前端应用示例**：
+```javascript
+// 定期轮询缓存状态，更新进度条
+setInterval(() => {
+  fetch('/api/portfolio/cache-status')
+    .then(r => r.json())
+    .then(data => {
+      // 如果 A股 正在刷新，显示进度
+      if (data.stock_a.is_refreshing) {
+        console.log('A股进度:', data.stock_a.progress);
+        updateProgressBar(data.stock_a.progress);
+      }
+    });
+}, 1000);
+```
 
 ### 手动触发缓存刷新
 ```bash
