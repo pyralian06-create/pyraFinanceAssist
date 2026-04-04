@@ -100,6 +100,46 @@ def test_routes():
     print()
 
 
+def test_progress_capture():
+    """测试进度条捕获逻辑"""
+    print("🔍 测试进度条捕获")
+
+    import io
+    import threading
+    from app.data_fetcher.cache_manager import _StderrCapture, _thread_local
+
+    # 清空线程本地存储
+    if hasattr(_thread_local, 'progress_map'):
+        _thread_local.progress_map.clear()
+
+    # 创建模拟 stderr
+    mock_stderr = io.StringIO()
+    capture = _StderrCapture("A股全市场行情", mock_stderr)
+
+    # 测试用例：tqdm 进度条格式
+    # 注意：.strip() 会删除前导空格，所以期望值也是 strip 后的
+    test_cases = [
+        ("  7%|6         | 4/58 [00:32<07:22,  8.19s/it]\r", "7%|6         | 4/58 [00:32<07:22,  8.19s/it]"),
+        (" 29%|##8       | 4/14 [00:32<01:19,  7.94s/it]\r", "29%|##8       | 4/14 [00:32<01:19,  7.94s/it]"),
+        ("100%|##########| 58/58 [05:48<00:00,  6.04s/it]\n", "100%|##########| 58/58 [05:48<00:00,  6.04s/it]"),
+    ]
+
+    for input_str, expected_progress in test_cases:
+        print(f"  输入: {repr(input_str)}")
+        capture.write(input_str)
+
+        # 检查是否被正确捕获
+        if hasattr(_thread_local, 'progress_map'):
+            captured = _thread_local.progress_map.get("A股全市场行情", "")
+            print(f"  捕获: {repr(captured)}")
+            assert captured == expected_progress, f"期望 {repr(expected_progress)}，得到 {repr(captured)}"
+            print(f"  ✅ 通过")
+        else:
+            print(f"  ⚠️  未初始化线程本地存储")
+
+    print("  ✅ 进度条捕获测试通过\n")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("🧪 FastAPI 应用测试")
@@ -109,6 +149,7 @@ if __name__ == "__main__":
     try:
         test_app_info()
         test_routes()
+        test_progress_capture()
         test_root_endpoint()
         test_health_endpoint()
         test_swagger_docs()

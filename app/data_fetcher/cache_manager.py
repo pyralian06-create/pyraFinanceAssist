@@ -27,15 +27,20 @@ class _StderrCapture(io.StringIO):
 
     def write(self, s):
         """拦截 stderr 写入，提取进度信息（线程本地存储）"""
-        if s and s.strip():
-            # 保留 tqdm 进度条的关键信息（百分比、进度条、当前/总数）
-            # 例如: 95%|█████████▍| 55/58 [05:57<00:19,  6.64s/it]
-            if '%' in s or '|' in s or '/' in s:
-                # 这看起来像是进度条，存储到线程本地存储
-                progress_text = s.strip()[:150]  # 限制长度
-                if not hasattr(_thread_local, 'progress_map'):
-                    _thread_local.progress_map = {}
-                _thread_local.progress_map[self.cache_name] = progress_text
+        if s:
+            # tqdm 使用 \r（回车符）覆盖同一行，所以去掉 \r 后查看内容
+            # 例如: "  7%|6         | 4/58 [00:32<07:22,  8.19s/it]\r"
+            content = s.replace('\r', '').strip()
+
+            if content:
+                # 检查是否看起来像 tqdm 进度条
+                # 特征：包含 % 和 | 和 /（百分比、进度条、计数）
+                if '%' in content and '|' in content and '/' in content:
+                    # 存储到线程本地存储
+                    progress_text = content[:150]  # 限制长度
+                    if not hasattr(_thread_local, 'progress_map'):
+                        _thread_local.progress_map = {}
+                    _thread_local.progress_map[self.cache_name] = progress_text
 
         # 同时写到原始 stderr（保持正常输出）
         self.original_stderr.write(s)

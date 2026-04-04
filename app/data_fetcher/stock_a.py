@@ -27,7 +27,7 @@ from .cache_manager import CacheManager
 logger = logging.getLogger(__name__)
 
 # 使用通用缓存管理器
-_cache_manager = CacheManager("A股全市场行情", retry_interval=60)
+_cache_manager = CacheManager("A股全市场行情")
 
 
 def _normalize_symbol(symbol: str) -> str:

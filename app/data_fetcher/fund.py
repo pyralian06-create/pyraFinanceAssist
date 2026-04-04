@@ -35,8 +35,8 @@ from .cache_manager import CacheManager
 logger = logging.getLogger(__name__)
 
 # 缓存管理器
-_cache_etf = CacheManager("ETF全市场行情", retry_interval=60)
-_cache_lof = CacheManager("LOF全市场行情", retry_interval=60)
+_cache_etf = CacheManager("ETF全市场行情")
+_cache_lof = CacheManager("LOF全市场行情")
 _cache_open_funds: Dict[str, QuoteData] = {}  # 按 symbol 缓存已加载的开放式基金
 
 
