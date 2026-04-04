@@ -1,23 +1,28 @@
 """
 基金数据获取模块（ETF / LOF / 开放式基金）
 
+缓存策略：
+  - ETF：启动时加载全市场并缓存，后续秒级查询
+  - LOF：启动时加载全市场并缓存，后续秒级查询
+  - 开放式基金：加载已持仓的基金，新基金按需单独查询
+
 基金类型自动识别逻辑：
   - 6 位数代码 1xxxxx 或 5xxxxx → ETF（交易所交易基金）
   - 其他 6 位数代码 → 首先尝试 LOF，失败则当作开放式基金
-  - 实际建议：前端明确指定基金类型，或在 symbol 中包含类型标记
 
 三种基金类型的数据源：
-  - ETF: fund_etf_spot_em() / fund_etf_hist_em()
-  - LOF: fund_lof_spot_em() / fund_lof_hist_em()
-  - 开放式基金: fund_open_fund_daily_em() / fund_open_fund_info_em()
+  - ETF: fund_etf_spot_em() / fund_etf_hist_em()（全市场缓存）
+  - LOF: fund_lof_spot_em() / fund_lof_hist_em()（全市场缓存）
+  - 开放式基金: fund_open_fund_daily_em() / fund_open_fund_info_em()（按需查询）
        注意：开放式基金仅提供 T+1 净值，无实时市价
 """
 
 import logging
 from decimal import Decimal
-from datetime import datetime, date
-from typing import Optional, List, Tuple
+from datetime import datetime
+from typing import Optional, List, Dict
 import pandas as pd
+import socket
 
 try:
     import akshare as ak
@@ -25,14 +30,32 @@ except ImportError:
     ak = None
 
 from .schemas import QuoteData, HistoricalBar
+from .cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
-# 缓存：每类基金的全市场数据 + 时间戳
-_cache_etf = {"timestamp": None, "data": None}
-_cache_lof = {"timestamp": None, "data": None}
-_cache_open = {"timestamp": None, "data": None}
-_CACHE_EXPIRE_SECONDS = 60
+# 缓存管理器
+_cache_etf = CacheManager("ETF全市场行情", retry_interval=60)
+_cache_lof = CacheManager("LOF全市场行情", retry_interval=60)
+_cache_open_funds: Dict[str, QuoteData] = {}  # 按 symbol 缓存已加载的开放式基金
+
+
+def _fetch_etf_spot() -> pd.DataFrame:
+    """获取全市场 ETF 行情数据"""
+    socket.setdefaulttimeout(60)
+    return ak.fund_etf_spot_em()
+
+
+def _fetch_lof_spot() -> pd.DataFrame:
+    """获取全市场 LOF 行情数据"""
+    socket.setdefaulttimeout(60)
+    return ak.fund_lof_spot_em()
+
+
+def init_cache_loaders() -> None:
+    """初始化基金缓存加载函数（应用启动时调用）"""
+    _cache_etf.set_load_func(_fetch_etf_spot)
+    _cache_lof.set_load_func(_fetch_lof_spot)
 
 
 def _detect_fund_type(symbol: str) -> str:
@@ -48,8 +71,6 @@ def _detect_fund_type(symbol: str) -> str:
     if not symbol.isdigit() or len(symbol) != 6:
         # 无法判断，默认按开放式基金处理
         return "OPEN"
-
-    first_char = symbol[0]
 
     # SZ 深交所 ETF: 159xxx
     if symbol.startswith('159') or symbol.startswith('16') or symbol.startswith('18'):
@@ -73,70 +94,6 @@ def _detect_fund_type(symbol: str) -> str:
     return "OPEN"
 
 
-def _get_etf_data_cached() -> pd.DataFrame:
-    """获取 ETF 全市场数据（缓存 60s）"""
-    global _cache_etf
-
-    now = datetime.now()
-    if (_cache_etf["timestamp"] is not None and
-        (now - _cache_etf["timestamp"]).total_seconds() < _CACHE_EXPIRE_SECONDS and
-        _cache_etf["data"] is not None):
-        return _cache_etf["data"]
-
-    logger.info("🔄 拉取 ETF 实时行情...")
-    try:
-        df = ak.fund_etf_spot_em()
-        _cache_etf["timestamp"] = now
-        _cache_etf["data"] = df
-        logger.info(f"✅ 获取 {len(df)} 只 ETF")
-        return df
-    except Exception as e:
-        logger.error(f"❌ 获取 ETF 行情失败: {e}")
-        raise
-
-
-def _get_lof_data_cached() -> pd.DataFrame:
-    """获取 LOF 全市场数据（缓存 60s）"""
-    global _cache_lof
-
-    now = datetime.now()
-    if (_cache_lof["timestamp"] is not None and
-        (now - _cache_lof["timestamp"]).total_seconds() < _CACHE_EXPIRE_SECONDS and
-        _cache_lof["data"] is not None):
-        return _cache_lof["data"]
-
-    logger.info("🔄 拉取 LOF 实时行情...")
-    try:
-        df = ak.fund_lof_spot_em()
-        _cache_lof["timestamp"] = now
-        _cache_lof["data"] = df
-        logger.info(f"✅ 获取 {len(df)} 只 LOF")
-        return df
-    except Exception as e:
-        logger.error(f"❌ 获取 LOF 行情失败: {e}")
-        raise
-
-
-def _get_open_fund_data_cached() -> pd.DataFrame:
-    """获取开放式基金全市场数据（缓存 60s）"""
-    global _cache_open
-
-    now = datetime.now()
-    if (_cache_open["timestamp"] is not None and
-        (now - _cache_open["timestamp"]).total_seconds() < _CACHE_EXPIRE_SECONDS and
-        _cache_open["data"] is not None):
-        return _cache_open["data"]
-
-    logger.info("🔄 拉取开放式基金实时净值...")
-    try:
-        df = ak.fund_open_fund_daily_em()
-        _cache_open["timestamp"] = now
-        _cache_open["data"] = df
-        logger.info(f"✅ 获取 {len(df)} 只开放式基金")
-        return df
-    except Exception as e:
-        logger.error(f"❌ 获取开放式基金失败: {e}")
-        raise
 
 
 def get_quote(symbol: str, fund_type: Optional[str] = None) -> QuoteData:
@@ -174,89 +131,122 @@ def get_quote(symbol: str, fund_type: Optional[str] = None) -> QuoteData:
 
 
 def _get_etf_quote(symbol: str) -> QuoteData:
-    """从 ETF 数据获取报价"""
-    df = _get_etf_data_cached()
-    row = df[df['代码'] == symbol]
+    """查询单个 ETF 实时行情（仅从缓存查询）"""
+    try:
+        logger.info(f"📈 查询 ETF {symbol}...")
 
-    if row.empty:
-        raise ValueError(f"ETF {symbol} 不存在")
+        cache_df = _cache_etf.get_data()
+        if cache_df is None:
+            raise ValueError("ETF缓存尚未初始化，请稍候")
 
-    row = row.iloc[0]
+        match = cache_df[cache_df['代码'] == symbol]
+        if match.empty:
+            raise ValueError(f"ETF {symbol} 不存在或无数据")
 
-    return QuoteData(
-        symbol=symbol,
-        name=str(row.get('名称', '')),
-        current_price=Decimal(str(row.get('最新价', 0))),
-        previous_close=Decimal(str(row.get('昨收', 0))),
-        change_amount=Decimal(str(row.get('涨跌额', 0))),
-        change_pct=float(row.get('涨跌幅', 0)),
-        volume=float(row.get('成交量', 0)) if pd.notna(row.get('成交量')) else None,
-        timestamp=datetime.now(),
-        asset_type="FUND"
-    )
+        row = match.iloc[0]
+        return QuoteData(
+            symbol=symbol,
+            name=str(row.get('名称', '')),
+            current_price=Decimal(str(row.get('最新价', 0))),
+            previous_close=Decimal(str(row.get('昨收', 0))),
+            change_amount=Decimal(str(row.get('涨跌额', 0))),
+            change_pct=float(row.get('涨跌幅', 0)),
+            volume=float(row.get('成交量', 0)) if pd.notna(row.get('成交量')) else None,
+            timestamp=datetime.now(),
+            asset_type="FUND"
+        )
+    except Exception as e:
+        logger.error(f"❌ 获取 ETF {symbol} 失败: {e}")
+        raise
 
 
 def _get_lof_quote(symbol: str) -> QuoteData:
-    """从 LOF 数据获取报价"""
-    df = _get_lof_data_cached()
-    row = df[df['代码'] == symbol]
+    """查询单个 LOF 实时行情（仅从缓存查询）"""
+    try:
+        logger.info(f"📈 查询 LOF {symbol}...")
 
-    if row.empty:
-        raise ValueError(f"LOF {symbol} 不存在")
+        cache_df = _cache_lof.get_data()
+        if cache_df is None:
+            raise ValueError("LOF缓存尚未初始化，请稍候")
 
-    row = row.iloc[0]
+        match = cache_df[cache_df['代码'] == symbol]
+        if match.empty:
+            raise ValueError(f"LOF {symbol} 不存在或无数据")
 
-    return QuoteData(
-        symbol=symbol,
-        name=str(row.get('名称', '')),
-        current_price=Decimal(str(row.get('最新价', 0))),
-        previous_close=Decimal(str(row.get('昨收', 0))),
-        change_amount=Decimal(str(row.get('涨跌额', 0))),
-        change_pct=float(row.get('涨跌幅', 0)),
-        volume=float(row.get('成交量', 0)) if pd.notna(row.get('成交量')) else None,
-        timestamp=datetime.now(),
-        asset_type="FUND"
-    )
+        row = match.iloc[0]
+        return QuoteData(
+            symbol=symbol,
+            name=str(row.get('名称', '')),
+            current_price=Decimal(str(row.get('最新价', 0))),
+            previous_close=Decimal(str(row.get('昨收', 0))),
+            change_amount=Decimal(str(row.get('涨跌额', 0))),
+            change_pct=float(row.get('涨跌幅', 0)),
+            volume=float(row.get('成交量', 0)) if pd.notna(row.get('成交量')) else None,
+            timestamp=datetime.now(),
+            asset_type="FUND"
+        )
+    except Exception as e:
+        logger.error(f"❌ 获取 LOF {symbol} 失败: {e}")
+        raise
+
+
+def _load_open_fund_quote_sync(symbol: str) -> QuoteData:
+    """
+    同步加载单个开放式基金净值（用于缓存预加载）
+
+    返回 QuoteData，并自动存入 _cache_open_funds
+    """
+    try:
+        logger.info(f"📈 加载开放式基金 {symbol}...")
+        df = ak.fund_open_fund_info_em(
+            symbol=symbol,
+            indicator='单位净值走势',
+            period='1年'
+        )
+
+        if df.empty:
+            raise ValueError(f"开放式基金 {symbol} 不存在")
+
+        row = df.iloc[-1]
+        current_nav = Decimal(str(row.get('单位净值', 0)))
+        change_pct = float(row.get('日增长率', 0)) if pd.notna(row.get('日增长率')) else 0.0
+        change_amount = Decimal(str(row.get('日增长值', 0))) if pd.notna(row.get('日增长值')) else Decimal('0')
+
+        quote = QuoteData(
+            symbol=symbol,
+            name=str(row.get('基金简称', '')),
+            current_price=current_nav,
+            previous_close=current_nav / (1 + change_pct / 100) if change_pct != 0 else current_nav,
+            change_amount=change_amount,
+            change_pct=change_pct,
+            volume=None,
+            timestamp=datetime.now(),
+            asset_type="FUND"
+        )
+
+        return quote
+    except Exception as e:
+        logger.error(f"❌ 加载开放式基金 {symbol} 失败: {e}")
+        raise
 
 
 def _get_open_fund_quote(symbol: str) -> QuoteData:
     """
-    从开放式基金数据获取报价
+    查询单个开放式基金实时净值
 
-    注意：开放式基金仅提供 T+1 净值，无实时市价、无成交量、无 previous_close
+    优先从缓存查询，缓存中没有则即时加载并存入缓存
+
+    注意：开放式基金仅提供 T+1 净值，无实时市价、无成交量
     """
-    df = _get_open_fund_data_cached()
-    row = df[df['基金代码'] == symbol]
+    # 优先从缓存查询
+    if symbol in _cache_open_funds:
+        logger.info(f"📈 从缓存查询开放式基金 {symbol}")
+        return _cache_open_funds[symbol]
 
-    if row.empty:
-        raise ValueError(f"开放式基金 {symbol} 不存在")
-
-    row = row.iloc[0]
-
-    # 动态列名：当日单位净值列名为 "YYYY-MM-DD-单位净值"
-    nav_col = None
-    for col in row.index:
-        if isinstance(col, str) and col.endswith('-单位净值'):
-            nav_col = col
-            break
-
-    if nav_col is None:
-        raise ValueError(f"基金 {symbol} 无净值数据")
-
-    current_nav = Decimal(str(row[nav_col]))
-    change_pct = float(row.get('日增长率', 0)) if pd.notna(row.get('日增长率')) else 0.0
-
-    return QuoteData(
-        symbol=symbol,
-        name=str(row.get('基金简称', '')),
-        current_price=current_nav,
-        previous_close=current_nav / (1 + change_pct / 100) if change_pct != 0 else current_nav,
-        change_amount=Decimal(str(row.get('日增长值', 0))),
-        change_pct=change_pct,
-        volume=None,  # 开放式基金无成交量
-        timestamp=datetime.now(),
-        asset_type="FUND"
-    )
+    # 缓存中没有，即时加载
+    quote = _load_open_fund_quote_sync(symbol)
+    _cache_open_funds[symbol] = quote
+    return quote
 
 
 def get_history(

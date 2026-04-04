@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     alert_cooldown_minutes: int = 30  # 冷却时间（分钟）
     monitor_interval_seconds: int = 60  # 轮询频率（秒）
 
+    # ==================== 数据缓存 ====================
+    cache_ttl_seconds: int = 300  # 全市场行情缓存有效期（秒），根据接口返回时延调整
+    cache_refresh_interval_seconds: int = 300  # 缓存定时刷新间隔（秒），默认 5 分钟
+
     # ==================== 日志 ====================
     log_level: str = "INFO"
 

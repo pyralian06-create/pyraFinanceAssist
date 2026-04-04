@@ -10,12 +10,19 @@ FastAPI 应用入口
 """
 
 import logging
+import threading
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.models import init_db
+from app.models.database import SessionLocal
+from app.models.trade import Trade
 from app.config import settings
+from app.data_fetcher.stock_a import init_cache_loader as init_stock_cache
+from app.data_fetcher.fund import init_cache_loaders as init_fund_cache
+from app.cache_refresh import do_full_refresh
 
 # ==================== 日志配置 ====================
 logging.basicConfig(
@@ -23,6 +30,33 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+# ==================== 定时刷新任务 ====================
+def _start_cache_refresh_daemon():
+    """
+    启动缓存定时刷新守护进程
+
+    - 启动时立即刷新一次
+    - 之后每 N 秒刷新一次
+    - 各缓存独立刷新，一个失败不影响其他
+    """
+    def refresh_loop():
+        first_run = True
+
+        while True:
+            if not first_run:
+                time.sleep(settings.cache_refresh_interval_seconds)
+            else:
+                first_run = False
+
+            try:
+                do_full_refresh(source="auto")
+            except RuntimeError:
+                logger.info("⏭️ [定时任务] 跳过本次刷新（手动刷新进行中）")
+
+    thread = threading.Thread(target=refresh_loop, daemon=True)
+    thread.start()
 
 
 # ==================== 生命周期事件 ====================
@@ -44,6 +78,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ 数据库初始化失败: {e}")
         raise
+
+    # 初始化缓存加载函数
+    try:
+        init_stock_cache()
+        init_fund_cache()
+        logger.info("✅ 缓存加载函数已初始化")
+    except Exception as e:
+        logger.error(f"❌ 缓存初始化失败: {e}")
+
+    # 启动缓存定时刷新任务
+    try:
+        _start_cache_refresh_daemon()
+        logger.info(f"✅ 缓存定时刷新任务已启动（周期 {settings.cache_refresh_interval_seconds}s）")
+    except Exception as e:
+        logger.error(f"❌ 缓存定时刷新任务启动失败: {e}")
 
     # TODO: 启动盯盘守护进程（阶段 3）
     # from app.monitor.daemon import start_monitor_daemon

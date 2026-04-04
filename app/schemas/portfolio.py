@@ -7,7 +7,8 @@ PortfolioSummary: 整体持仓汇总（核心 API 返回体）
 
 from pydantic import BaseModel
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 
 
 class PositionDetail(BaseModel):
@@ -46,6 +47,7 @@ class PortfolioSummary(BaseModel):
     total_pnl_percent: str  # 总盈亏比例
     realized_pnl: Decimal  # 已实现盈亏 (已卖出部分)
     positions: List[PositionDetail]  # 所有持仓明细
+    data_update_time: Optional[datetime] = None  # 行情数据最后更新时间
 
     class Config:
         json_schema_extra = {
