@@ -6,9 +6,9 @@
 """
 
 import logging
+import sys
 import threading
 import time
-import io
 from datetime import datetime
 from typing import Optional, Callable, Any, Dict
 from app.config import settings
@@ -17,38 +17,48 @@ from app.config import settings
 _progress_lock = threading.Lock()
 _progress_map: Dict[str, str] = {}
 
+# 线程ID → cache_name 映射，供分发代理使用
+_thread_cache_map: Dict[int, str] = {}
+_thread_cache_lock = threading.Lock()
 
-class _StderrCapture(io.StringIO):
-    """捕获 stderr 以提取 tqdm 进度条信息（全局共享）"""
 
-    def __init__(self, cache_name: str, original_stderr):
-        super().__init__()
-        self.cache_name = cache_name
-        self.original_stderr = original_stderr
+class _DispatchingStderr:
+    """
+    全局 stderr 分发代理（替换 sys.stderr 一次）
+
+    根据 threading.current_thread().ident 将 tqdm 输出路由到对应的 cache_name，
+    解决多线程并发刷新时 sys.stderr 被覆盖导致进度混用的问题。
+    """
+
+    def __init__(self, original_stderr):
+        self._original = original_stderr
 
     def write(self, s):
-        """拦截 stderr 写入，提取进度信息（存到全局字典）"""
         if s:
-            # tqdm 使用 \r（回车符）覆盖同一行，所以去掉 \r 后查看内容
-            # 例如: "  7%|6         | 4/58 [00:32<07:22,  8.19s/it]\r"
-            content = s.replace('\r', '').strip()
+            thread_id = threading.current_thread().ident
+            with _thread_cache_lock:
+                cache_name = _thread_cache_map.get(thread_id)
 
-            if content:
-                # 检查是否看起来像 tqdm 进度条
-                # 特征：包含 % 和 | 和 /（百分比、进度条、计数）
-                if '%' in content and '|' in content and '/' in content:
-                    # 存储到全局进度字典（所有线程可见）
-                    progress_text = content[:150]  # 限制长度
+            if cache_name:
+                content = s.replace('\r', '').strip()
+                if content and '%' in content and '|' in content and '/' in content:
                     with _progress_lock:
-                        _progress_map[self.cache_name] = progress_text
+                        _progress_map[cache_name] = content[:150]
 
-        # 同时写到原始 stderr（保持正常输出）
-        self.original_stderr.write(s)
+        self._original.write(s)
         return len(s)
 
     def flush(self):
-        """刷新输出"""
-        self.original_stderr.flush()
+        self._original.flush()
+
+    def fileno(self):
+        return self._original.fileno()
+
+
+# 安装全局分发代理（模块加载时执行一次）
+_original_stderr = sys.stderr
+if not isinstance(sys.stderr, _DispatchingStderr):
+    sys.stderr = _DispatchingStderr(_original_stderr)
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +148,10 @@ class CacheManager:
                 return
             self._refreshing = True
 
-        # 保存原始 stderr，用进度捕获器替换
-        import sys
-        original_stderr = sys.stderr
-        stderr_capture = _StderrCapture(self.name, original_stderr)
-        sys.stderr = stderr_capture
+        # 注册当前线程 → cache_name 映射，供全局分发代理路由进度
+        thread_id = threading.current_thread().ident
+        with _thread_cache_lock:
+            _thread_cache_map[thread_id] = self.name
 
         try:
             logger.info(f"🔄 {self.name}刷新中...")
@@ -157,8 +166,9 @@ class CacheManager:
 
             logger.info(f"✅ {self.name}刷新完成: {len(data) if hasattr(data, '__len__') else 'OK'}, 耗时 {elapsed:.1f}s")
         finally:
-            sys.stderr = original_stderr
-            # 清理全局进度字典中该缓存的进度记录
+            # 清理线程映射和进度记录
+            with _thread_cache_lock:
+                _thread_cache_map.pop(thread_id, None)
             with _progress_lock:
                 _progress_map.pop(self.name, None)
             with self._lock:

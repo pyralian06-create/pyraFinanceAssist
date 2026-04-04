@@ -101,40 +101,48 @@ def test_routes():
 
 
 def test_progress_capture():
-    """测试进度条捕获逻辑"""
+    """测试进度条捕获逻辑（通过分发代理 + 线程映射）"""
     print("🔍 测试进度条捕获")
 
-    import io
+    import sys
     import threading
-    from app.data_fetcher.cache_manager import _StderrCapture, _progress_map, _progress_lock
+    from app.data_fetcher.cache_manager import (
+        _progress_map, _progress_lock,
+        _thread_cache_map, _thread_cache_lock,
+    )
+
+    cache_name = "A股全市场行情"
+    thread_id = threading.current_thread().ident
+
+    # 注册当前线程到测试用的 cache_name
+    with _thread_cache_lock:
+        _thread_cache_map[thread_id] = cache_name
 
     # 清空全局进度字典
     with _progress_lock:
         _progress_map.clear()
 
-    # 创建模拟 stderr
-    mock_stderr = io.StringIO()
-    capture = _StderrCapture("A股全市场行情", mock_stderr)
-
     # 测试用例：tqdm 进度条格式
-    # 注意：.strip() 会删除前导空格，所以期望值也是 strip 后的
     test_cases = [
         ("  7%|6         | 4/58 [00:32<07:22,  8.19s/it]\r", "7%|6         | 4/58 [00:32<07:22,  8.19s/it]"),
         (" 29%|##8       | 4/14 [00:32<01:19,  7.94s/it]\r", "29%|##8       | 4/14 [00:32<01:19,  7.94s/it]"),
         ("100%|##########| 58/58 [05:48<00:00,  6.04s/it]\n", "100%|##########| 58/58 [05:48<00:00,  6.04s/it]"),
     ]
 
-    for input_str, expected_progress in test_cases:
-        print(f"  输入: {repr(input_str)}")
-        capture.write(input_str)
+    try:
+        for input_str, expected_progress in test_cases:
+            print(f"  输入: {repr(input_str)}")
+            sys.stderr.write(input_str)  # 通过分发代理写入
 
-        # 检查是否被正确捕获（从全局进度字典）
-        with _progress_lock:
-            captured = _progress_map.get("A股全市场行情", "")
+            with _progress_lock:
+                captured = _progress_map.get(cache_name, "")
 
-        print(f"  捕获: {repr(captured)}")
-        assert captured == expected_progress, f"期望 {repr(expected_progress)}，得到 {repr(captured)}"
-        print(f"  ✅ 通过")
+            print(f"  捕获: {repr(captured)}")
+            assert captured == expected_progress, f"期望 {repr(expected_progress)}，得到 {repr(captured)}"
+            print(f"  ✅ 通过")
+    finally:
+        with _thread_cache_lock:
+            _thread_cache_map.pop(thread_id, None)
 
     print("  ✅ 进度条捕获测试通过\n")
 
