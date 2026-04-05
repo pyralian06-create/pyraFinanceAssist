@@ -180,6 +180,7 @@ else:
                     "GOLD_SPOT": "黄金"
                 }.get(pos['asset_type'], pos['asset_type']),
                 "代码": pos['symbol'],
+                "名称": pos['name'] if pos['name'] else "-", # Add name here, default to "-" if empty
                 "持仓量": f"{float(pos['holding_quantity']):,.2f}",
                 "均价 (元)": f"{float(pos['avg_cost']):,.2f}",
                 "现价 (元)": f"{float(pos['current_price']):,.2f}",
@@ -293,3 +294,4 @@ st.markdown("""
 - 点击 🔄 按钮立即刷新所有数据
 - 交易流水可搜索过滤
 """)
+
