@@ -17,12 +17,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.models import init_db
-from app.models.database import SessionLocal
-from app.models.trade import Trade
 from app.config import settings
-from app.data_fetcher.stock_a import init_cache_loader as init_stock_cache
-from app.data_fetcher.fund import init_cache_loaders as init_fund_cache
-from app.cache_refresh import do_full_refresh
+from app.services.market_info import sync_market_symbols
 
 # ==================== 日志配置 ====================
 logging.basicConfig(
@@ -32,46 +28,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ==================== 定时刷新任务 ====================
-def _start_cache_refresh_daemon():
-    """
-    启动缓存定时刷新守护进程
-
-    - 启动时立即刷新一次
-    - 之后每 N 秒刷新一次
-    - 各缓存独立刷新，一个失败不影响其他
-    """
-    def refresh_loop():
-        first_run = True
-
-        while True:
-            if not first_run:
-                time.sleep(settings.cache_refresh_interval_seconds)
-            else:
-                first_run = False
-
-            try:
-                do_full_refresh(source="auto")
-            except RuntimeError:
-                logger.info("⏭️ [定时任务] 跳过本次刷新（手动刷新进行中）")
-
-    thread = threading.Thread(target=refresh_loop, daemon=True)
-    thread.start()
-
-
-# ==================== 生命周期事件 ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     应用生命周期管理
-
-    启动：初始化数据库、启动后台任务
-    关闭：清理资源
     """
     # ========== 启动阶段 ==========
     logger.info("🚀 启动金融助手应用...")
 
-    # 初始化数据库表
+    # 1. 初始化数据库表
     try:
         init_db()
         logger.info("✅ 数据库初始化成功")
@@ -79,20 +44,12 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ 数据库初始化失败: {e}")
         raise
 
-    # 初始化缓存加载函数
+    # 2. 异步同步全市场名单 (不阻塞启动)
     try:
-        init_stock_cache()
-        init_fund_cache()
-        logger.info("✅ 缓存加载函数已初始化")
+        sync_market_symbols()
+        logger.info("✅ 已触发市场名单后台同步任务")
     except Exception as e:
-        logger.error(f"❌ 缓存初始化失败: {e}")
-
-    # 启动缓存定时刷新任务
-    try:
-        _start_cache_refresh_daemon()
-        logger.info(f"✅ 缓存定时刷新任务已启动（周期 {settings.cache_refresh_interval_seconds}s）")
-    except Exception as e:
-        logger.error(f"❌ 缓存定时刷新任务启动失败: {e}")
+        logger.error(f"❌ 触发同步任务失败: {e}")
 
     # TODO: 启动盯盘守护进程（阶段 3）
     # from app.monitor.daemon import start_monitor_daemon
@@ -103,7 +60,6 @@ async def lifespan(app: FastAPI):
 
     # ========== 关闭阶段 ==========
     logger.info("🛑 关闭应用...")
-    # TODO: 清理资源、关闭后台任务
     logger.info("✅ 应用关闭完成")
 
 
@@ -163,10 +119,12 @@ def root():
 from app.api.trades import router as trades_router
 from app.api.portfolio import router as portfolio_router
 from app.api.alerts import router as alerts_router
+from app.api.market import router as market_router
 
 app.include_router(trades_router, prefix="/api/trades", tags=["Trades"])
 app.include_router(portfolio_router, prefix="/api/portfolio", tags=["Portfolio"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
+app.include_router(market_router, prefix="/api/market", tags=["Market"])
 
 
 # ==================== 应用入口 ====================

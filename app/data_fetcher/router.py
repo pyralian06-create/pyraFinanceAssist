@@ -23,6 +23,8 @@ import logging
 from typing import List, Tuple, Dict, Optional
 from decimal import Decimal
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from . import stock_a, fund, gold
 from .schemas import QuoteData, HistoricalBar
 
@@ -30,68 +32,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_quote(asset_type: str, symbol: str) -> QuoteData:
-    """
-    获取单个资产的实时行情
-
-    Args:
-        asset_type: 资产类型 ("STOCK_A" | "FUND" | "GOLD_SPOT")
-        symbol: 资产代码
-
-    Returns:
-        QuoteData: 实时行情
-
-    Raises:
-        ValueError: 资产类型不支持或获取失败
-    """
-    asset_type = asset_type.upper()
-
-    try:
-        if asset_type == "STOCK_A":
-            return stock_a.get_quote(symbol)
-        elif asset_type == "FUND":
-            return fund.get_quote(symbol)
-        elif asset_type == "GOLD_SPOT":
-            return gold.get_quote(symbol)
-        else:
-            raise ValueError(f"不支持的资产类型: {asset_type}")
-
-    except Exception as e:
-        logger.error(f"❌ 获取 {asset_type} {symbol} 失败: {e}")
-        raise
+    """获取单个资产实时行情（直连查询）"""
+    return get_quote_direct(asset_type, symbol)
 
 
 def get_quote_batch(positions: List[Tuple[str, str]]) -> Dict[Tuple[str, str], QuoteData]:
-    """
-    批量获取多个资产的实时行情
-
-    对每个持仓逐个查询（改用单个查询接口以提升响应速度）
-
-    Args:
-        positions: [(asset_type, symbol), ...] 列表
-
-    Returns:
-        {(asset_type, symbol): QuoteData, ...} 字典
-
-    Example:
-        positions = [('STOCK_A', 'sh600519'), ('FUND', '510300'), ('GOLD_SPOT', 'AU9999')]
-        quotes = get_quote_batch(positions)
-        for (asset_type, symbol), quote in quotes.items():
-            print(f"{symbol}: {quote.current_price}")
-    """
-    results = {}
-
-    logger.info(f"🔄 批量查询 {len(positions)} 个持仓...")
-
-    for asset_type, symbol in positions:
-        asset_type = asset_type.upper()
-        try:
-            quote = get_quote(asset_type, symbol)
-            results[(asset_type, symbol)] = quote
-        except Exception as e:
-            logger.warning(f"⚠️ 跳过 {asset_type} {symbol}: {e}")
-            results[(asset_type, symbol)] = None
-
-    return results
+    """并发获取多个资产实时行情（直连查询）"""
+    return get_quote_batch_direct(positions)
 
 
 def get_history(
