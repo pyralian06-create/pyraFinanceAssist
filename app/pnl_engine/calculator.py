@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.models.trade import Trade
+from app.models.market_symbol import MarketSymbol
 from app.data_fetcher import get_quote_batch_direct
 from app.schemas.portfolio import PositionDetail, PortfolioSummary
 
@@ -174,6 +175,23 @@ def calculate_portfolio(
     # 4. 批量获取行情
     quotes = get_quote_batch_direct(active_positions) if active_positions else {}
 
+    # 4.1 获取标的名称映射
+    def normalize(s: str) -> str:
+        if s.lower().startswith(('sh', 'sz')):
+            return s[2:]
+        return s
+
+    norm_to_orig = {normalize(pos[1]): pos[1] for pos in active_positions}
+    norm_symbols = list(norm_to_orig.keys())
+    market_infos = db.query(MarketSymbol).filter(MarketSymbol.symbol.in_(norm_symbols)).all()
+    
+    # 建立 原始代码 -> 名称 的映射
+    symbol_to_name = {}
+    for m in market_infos:
+        orig_symbol = norm_to_orig.get(m.symbol)
+        if orig_symbol:
+            symbol_to_name[orig_symbol] = m.name
+
     # 5. 构建持仓明细列表
     positions: List[PositionDetail] = []
     for (asset_type, symbol), state in states.items():
@@ -188,6 +206,9 @@ def calculate_portfolio(
 
         # 生成持仓明细
         position = _build_position_detail(state, current_price)
+        # 补全名称
+        position.name = symbol_to_name.get(symbol, "")
+        
         positions.append(position)
 
     # 6. 汇总

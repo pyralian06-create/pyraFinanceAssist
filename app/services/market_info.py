@@ -49,10 +49,11 @@ def sync_market_symbols() -> None:
 
         # 1. A股名单 (沪深京)
         try:
-            df_a = ak.stock_info_a_code_name()
+            # 改用 stock_zh_a_spot_em 接口获取名单，极其稳定
+            df_a = ak.stock_zh_a_spot_em()
             for _, row in df_a.iterrows():
-                symbol = str(row['code'])
-                name = str(row['name'])
+                symbol = str(row['代码'])
+                name = str(row['名称'])
                 all_symbols.append({
                     "symbol": symbol,
                     "name": name,
@@ -60,7 +61,7 @@ def sync_market_symbols() -> None:
                     "pinyin": get_pinyin_abbr(name),
                     "is_active": True
                 })
-            logger.info(f"✅ 已抓取 A股 名单: {len(df_a)} 只")
+            logger.info(f"✅ 已抓取 A股 名单 (EM接口): {len(df_a)} 只")
         except Exception as e:
             logger.error(f"⚠️ A股名单抓取失败: {e}")
 
