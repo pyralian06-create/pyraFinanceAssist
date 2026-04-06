@@ -63,6 +63,17 @@ def add_stock_prefix(code):
         return f"sz{code}"
 
 
+def format_asset_type(asset_type):
+    """将资产类型代码转换为中文标签"""
+    return {
+        "STOCK_A": "A 股",
+        "STOCK_HK": "港股",
+        "STOCK_US": "美股",
+        "FUND": "基金",
+        "GOLD_SPOT": "黄金"
+    }.get(asset_type, asset_type)
+
+
 def submit_trade(payload):
     """提交交易记录"""
     try:
@@ -179,7 +190,7 @@ with tab1:
         if st.session_state.search_results:
             st.markdown("**搜索结果：**")
             result_options = [
-                f"{r['symbol']} - {r['name']} ({r['asset_type']})"
+                f"{r['symbol']} - {r['name']} ({format_asset_type(r['asset_type'])})"
                 for r in st.session_state.search_results
             ]
             selected_result = st.selectbox(

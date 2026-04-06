@@ -124,10 +124,12 @@ st.divider()
 
 asset_filter = st.selectbox(
     "资产类型筛选",
-    options=[None, "STOCK_A", "FUND", "GOLD_SPOT"],
+    options=[None, "STOCK_A", "STOCK_HK", "STOCK_US", "FUND", "GOLD_SPOT"],
     format_func=lambda x: {
         None: "全部资产",
         "STOCK_A": "A 股",
+        "STOCK_HK": "港股",
+        "STOCK_US": "美股",
         "FUND": "基金（ETF/LOF）",
         "GOLD_SPOT": "现货黄金"
     }[x],
@@ -176,6 +178,8 @@ else:
             table_data.append({
                 "资产类型": {
                     "STOCK_A": "A股",
+                    "STOCK_HK": "港股",
+                    "STOCK_US": "美股",
                     "FUND": "基金",
                     "GOLD_SPOT": "黄金"
                 }.get(pos['asset_type'], pos['asset_type']),
@@ -252,9 +256,10 @@ else:
             "日期": date_str,
             "资产类型": {
                 "STOCK_A": "A股",
+                "STOCK_HK": "港股",
+                "STOCK_US": "美股",
                 "FUND": "基金",
-                "GOLD_SPOT": "黄金",
-                "US_STOCK": "美股"
+                "GOLD_SPOT": "黄金"
             }.get(trade.get('asset_type', ''), trade.get('asset_type', '-')),
             "代码": trade.get('symbol', '-'),
             "交易类型": {
