@@ -25,7 +25,7 @@ from decimal import Decimal
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from . import stock_a, fund, gold
+from . import stock_a, fund, gold, stock_hk, stock_us
 from .schemas import QuoteData, HistoricalBar
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def get_history(
     获取资产的历史 K线 / 净值数据
 
     Args:
-        asset_type: 资产类型 ("STOCK_A" | "FUND" | "GOLD_SPOT")
+        asset_type: 资产类型 ("STOCK_A" | "STOCK_HK" | "STOCK_US" | "FUND" | "GOLD_SPOT")
         symbol: 资产代码
         start_date: 开始日期（YYYYMMDD 格式），可选
         end_date: 结束日期（YYYYMMDD 格式），可选
@@ -67,6 +67,10 @@ def get_history(
     try:
         if asset_type == "STOCK_A":
             return stock_a.get_history(symbol, start_date, end_date)
+        elif asset_type == "STOCK_HK":
+            return stock_hk.get_history(symbol, start_date, end_date)
+        elif asset_type == "STOCK_US":
+            return stock_us.get_history(symbol, start_date, end_date)
         elif asset_type == "FUND":
             return fund.get_history(symbol, start_date, end_date)
         elif asset_type == "GOLD_SPOT":
@@ -86,6 +90,10 @@ def get_quote_direct(asset_type: str, symbol: str) -> QuoteData:
     try:
         if asset_type == "STOCK_A":
             return stock_a.get_quote_direct(symbol)
+        elif asset_type == "STOCK_HK":
+            return stock_hk.get_quote_direct(symbol)
+        elif asset_type == "STOCK_US":
+            return stock_us.get_quote_direct(symbol)
         elif asset_type == "FUND":
             return fund.get_quote_direct(symbol)
         elif asset_type == "GOLD_SPOT":

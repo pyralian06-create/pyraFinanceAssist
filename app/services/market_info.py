@@ -34,8 +34,8 @@ def get_pinyin_abbr(text: str) -> str:
 def sync_market_symbols() -> None:
     """
     全量同步市场标的名录（后台任务）
-    
-    聚合：A股 (sh/sz/bj), ETF, LOF, 开放式基金
+
+    聚合：A股 (sh/sz/bj), ETF, LOF, 开放式基金, 港股, 美股
     """
     if ak is None:
         logger.error("❌ 同步失败: akshare 未安装")
@@ -115,6 +115,43 @@ def sync_market_symbols() -> None:
             logger.info(f"✅ 已抓取 开放式基金 名单: {len(df_open)} 只")
         except Exception as e:
             logger.error(f"⚠️ 开放式基金名单抓取失败: {e}")
+
+        # 5. 港股名单
+        try:
+            df_hk = ak.stock_hk_spot_em()
+            for _, row in df_hk.iterrows():
+                code = str(row['代码'])  # AkShare 返回 5位零填充格式，如 00700
+                symbol = code.lstrip('0') or '0'  # 去掉前导零，至少保留一个 0；如 00700 -> 0700
+                name = str(row['名称'])
+                all_symbols.append({
+                    "symbol": symbol,
+                    "name": name,
+                    "asset_type": "STOCK_HK",
+                    "pinyin": get_pinyin_abbr(name),
+                    "is_active": True
+                })
+            logger.info(f"✅ 已抓取 港股 名单: {len(df_hk)} 只")
+        except Exception as e:
+            logger.error(f"⚠️ 港股名单抓取失败: {e}")
+
+        # 6. 美股名单
+        try:
+            df_us = ak.stock_us_spot_em()
+            for _, row in df_us.iterrows():
+                code = str(row['代码'])  # AkShare 返回 编码.ticker 格式，如 105.AAPL
+                # 提取纯 ticker（AAPL）
+                symbol = code.split('.')[-1] if '.' in code else code
+                name = str(row['名称'])    # 东方财富给的中文名，如 苹果
+                all_symbols.append({
+                    "symbol": symbol,
+                    "name": name,
+                    "asset_type": "STOCK_US",
+                    "pinyin": get_pinyin_abbr(name),
+                    "is_active": True
+                })
+            logger.info(f"✅ 已抓取 美股 名单: {len(df_us)} 只")
+        except Exception as e:
+            logger.error(f"⚠️ 美股名单抓取失败: {e}")
 
         if not all_symbols:
             logger.error("❌ 同步完成但未发现任何数据，跳过更新")

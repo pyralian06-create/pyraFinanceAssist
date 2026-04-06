@@ -115,9 +115,11 @@ with tab1:
     with col_asset:
         asset_type = st.selectbox(
             "资产类型 *",
-            options=["STOCK_A", "FUND", "GOLD_SPOT"],
+            options=["STOCK_A", "STOCK_HK", "STOCK_US", "FUND", "GOLD_SPOT"],
             format_func=lambda x: {
                 "STOCK_A": "A 股",
+                "STOCK_HK": "港股",
+                "STOCK_US": "美股",
                 "FUND": "基金（ETF/LOF）",
                 "GOLD_SPOT": "现货黄金"
             }[x],
@@ -148,15 +150,22 @@ with tab1:
         )
 
     else:
-        # A股/基金：搜索 + 代码输入
+        # A股/基金/港股/美股：搜索 + 代码输入
         st.markdown("**代码搜索与选择：**")
 
         col_search_input, col_search_btn = st.columns([0.8, 0.2])
 
         with col_search_input:
+            placeholder_text = {
+                "STOCK_A": "输入 A 股代码（如 600519）或名称",
+                "STOCK_HK": "输入港股代码（如 0700）或名称",
+                "STOCK_US": "输入美股代码（如 AAPL）或名称",
+                "FUND": "输入基金代码（如 510300）或名称",
+            }.get(asset_type, "输入代码或名称")
+
             search_query = st.text_input(
                 "搜索代码或名称",
-                placeholder="输入股票代码、股票名称或基金代码",
+                placeholder=placeholder_text,
                 key="search_input"
             )
 
@@ -187,10 +196,17 @@ with tab1:
                 st.success(f"✅ 已选择：{selected_item['symbol']} {selected_item['name']}")
 
         # 代码输入框（允许用户直接输入）
+        symbol_placeholder = {
+            "STOCK_A": "例：600519 或 sh600519",
+            "STOCK_HK": "例：0700 或 9988",
+            "STOCK_US": "例：AAPL 或 TSLA",
+            "FUND": "例：510300 或 005827",
+        }.get(asset_type, "输入代码")
+
         symbol = st.text_input(
             "或直接输入代码",
             value=st.session_state.selected_symbol,
-            placeholder="例：600519 或 510300 或 Au9999",
+            placeholder=symbol_placeholder,
             key="symbol_direct"
         )
         symbol = symbol.strip() if symbol else ""
@@ -373,7 +389,7 @@ with tab2:
         column_config={
             "资产类型": st.column_config.SelectboxColumn(
                 "资产类型 *",
-                options=["STOCK_A", "FUND", "GOLD_SPOT"],
+                options=["STOCK_A", "STOCK_HK", "STOCK_US", "FUND", "GOLD_SPOT"],
                 required=True,
             ),
             "代码": st.column_config.TextColumn(
