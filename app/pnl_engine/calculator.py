@@ -175,22 +175,38 @@ def calculate_portfolio(
     # 4. 批量获取行情
     quotes = get_quote_batch_direct(active_positions) if active_positions else {}
 
-    # 4.1 获取标的名称映射
+    # 4.1 获取标的名称映射（需要同时按 asset_type 和 symbol 查询）
     def normalize(s: str) -> str:
         if s.lower().startswith(('sh', 'sz')):
             return s[2:]
         return s
 
-    norm_to_orig = {normalize(pos[1]): pos[1] for pos in active_positions}
-    norm_symbols = list(norm_to_orig.keys())
-    market_infos = db.query(MarketSymbol).filter(MarketSymbol.symbol.in_(norm_symbols)).all()
-    
-    # 建立 原始代码 -> 名称 的映射
+    # 构建查询条件：(asset_type, symbol) -> 原始 symbol
+    position_key_to_orig = {
+        (pos[0], normalize(pos[1])): pos[1]
+        for pos in active_positions
+    }
+
+    # 建立 (asset_type, symbol) -> 名称 的映射
     symbol_to_name = {}
-    for m in market_infos:
-        orig_symbol = norm_to_orig.get(m.symbol)
-        if orig_symbol:
-            symbol_to_name[orig_symbol] = m.name
+    for asset_type, symbol in position_key_to_orig.keys():
+        norm_symbol = normalize(symbol)
+
+        # 如果是 FUND 类型，需要查询所有基金子类型 (FUND_OPEN, FUND_ETF, FUND_LOF 等)
+        if asset_type == "FUND":
+            market_info = db.query(MarketSymbol).filter(
+                MarketSymbol.symbol == norm_symbol,
+                MarketSymbol.asset_type.in_(["FUND", "FUND_OPEN", "FUND_ETF", "FUND_LOF"])
+            ).first()
+        else:
+            # 其他资产类型精确匹配
+            market_info = db.query(MarketSymbol).filter(
+                MarketSymbol.asset_type == asset_type,
+                MarketSymbol.symbol == norm_symbol
+            ).first()
+
+        if market_info:
+            symbol_to_name[position_key_to_orig[(asset_type, symbol)]] = market_info.name
 
     # 5. 构建持仓明细列表
     positions: List[PositionDetail] = []

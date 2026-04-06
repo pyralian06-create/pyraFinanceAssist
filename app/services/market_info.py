@@ -130,7 +130,7 @@ def sync_market_symbols() -> None:
                 # 构建 SQLite UPSERT 语句
                 stmt = insert(MarketSymbol).values(batch)
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=['symbol'],
+                    index_elements=['asset_type', 'symbol'],
                     set_={
                         "name": stmt.excluded.name,
                         "asset_type": stmt.excluded.asset_type,

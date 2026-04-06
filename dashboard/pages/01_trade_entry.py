@@ -28,19 +28,20 @@ API_BASE = "http://localhost:8000/api"
 # 工具函数
 # ────────────────────────────────────────────────────────────────
 
-def search_symbols(query, asset_type):
+def search_symbols(query, asset_type=None):
     """搜索标的代码"""
     try:
         r = httpx.get(
-            f"{API_BASE}/portfolio/symbol-search",
-            params={"q": query, "asset_type": asset_type, "limit": 20},
+            f"{API_BASE}/market/search",
+            params={"q": query, "limit": 20},
             timeout=5
         )
         if r.status_code == 200:
-            return r.json().get("results", [])
-        elif r.status_code == 202:
-            st.warning(f"⏳ {r.json()['detail']}")
-            return []
+            results = r.json()
+            # 如果指定了 asset_type，进行过滤
+            if asset_type:
+                results = [r for r in results if r.get("asset_type") == asset_type]
+            return results
         else:
             st.error(f"搜索失败: {r.status_code}")
             return []
@@ -163,14 +164,13 @@ with tab1:
             if st.button("🔍 搜索", key="search_btn"):
                 if search_query:
                     st.session_state.search_results = search_symbols(search_query, asset_type)
-                    if st.session_state.search_results:
-                        st.success(f"找到 {len(st.session_state.search_results)} 条结果")
+                    st.rerun()
 
         # 显示搜索结果
         if st.session_state.search_results:
             st.markdown("**搜索结果：**")
             result_options = [
-                f"{r['code']} - {r['name']} (¥{r['price']})"
+                f"{r['symbol']} - {r['name']} ({r['asset_type']})"
                 for r in st.session_state.search_results
             ]
             selected_result = st.selectbox(
@@ -182,9 +182,9 @@ with tab1:
 
             if selected_result is not None:
                 selected_item = st.session_state.search_results[selected_result]
-                st.session_state.selected_symbol = selected_item['code']
-                st.session_state.selected_fund_type = selected_item.get('fund_type')
-                st.success(f"✅ 已选择：{selected_item['code']} {selected_item['name']}")
+                st.session_state.selected_symbol = selected_item['symbol']
+                st.session_state.selected_fund_type = selected_item.get('asset_type')
+                st.success(f"✅ 已选择：{selected_item['symbol']} {selected_item['name']}")
 
         # 代码输入框（允许用户直接输入）
         symbol = st.text_input(
@@ -377,11 +377,12 @@ with tab2:
                 required=True,
             ),
             "代码": st.column_config.TextColumn(
-                "代码 *",
+                "代码 * (输入后点搜索)",
                 required=True,
             ),
             "名称": st.column_config.TextColumn(
-                "名称",
+                "名称（自动填充）",
+                disabled=True,
             ),
             "份数": st.column_config.NumberColumn(
                 "份数 *",
@@ -404,6 +405,40 @@ with tab2:
             ),
         }
     )
+
+    st.divider()
+
+    # 搜索并填充名称功能
+    col_search, col_clear_names = st.columns([0.3, 0.3])
+
+    with col_search:
+        if st.button("🔍 搜索代码并填充名称", key="search_symbols_btn"):
+            with st.spinner("搜索中..."):
+                for idx, row in edited_df.iterrows():
+                    code = str(row["代码"]).strip()
+                    if not code:
+                        continue
+
+                    try:
+                        # 调用搜索 API
+                        r = httpx.get(
+                            f"{API_BASE}/market/search",
+                            params={"q": code, "limit": 1},
+                            timeout=5
+                        )
+                        if r.status_code == 200:
+                            results = r.json()
+                            if results:
+                                # 取第一个结果的名称
+                                edited_df.at[idx, "名称"] = results[0]["name"]
+                        else:
+                            st.warning(f"⚠️ 代码 {code} 搜索失败 (HTTP {r.status_code})")
+                    except Exception as e:
+                        st.warning(f"⚠️ 代码 {code} 搜索异常: {str(e)}")
+
+                st.session_state.batch_import_data = edited_df
+                st.success("✅ 搜索完成！")
+                st.rerun()
 
     st.divider()
 
@@ -444,13 +479,14 @@ with tab2:
 
             for idx, row in edited_df.iterrows():
                 # 验证必填项
-                if not row["代码"]:
+                code = str(row["代码"]).strip() if pd.notna(row["代码"]) else ""
+                if not code or code.lower() == "nan":
                     errors.append(f"第 {idx + 1} 行：代码不能为空")
                     continue
-                if row["份数"] <= 0:
+                if pd.isna(row["份数"]) or row["份数"] <= 0:
                     errors.append(f"第 {idx + 1} 行：份数必须 > 0")
                     continue
-                if row["总金额(元)"] <= 0:
+                if pd.isna(row["总金额(元)"]) or row["总金额(元)"] <= 0:
                     errors.append(f"第 {idx + 1} 行：总金额必须 > 0")
                     continue
 
@@ -458,7 +494,7 @@ with tab2:
                 cost_price = round(row["总金额(元)"] / row["份数"], 4)
 
                 # 处理 A 股代码前缀
-                submit_symbol = str(row["代码"]).strip()
+                submit_symbol = code
                 if row["资产类型"] == "STOCK_A":
                     submit_symbol = add_stock_prefix(submit_symbol)
 
@@ -507,13 +543,13 @@ with tab2:
     with col_clear:
         if st.button("🔄 清空数据", key="batch_clear_btn"):
             st.session_state.batch_import_data = pd.DataFrame({
-                "资产类型": [],
-                "代码": [],
-                "名称": [],
-                "份数": [],
-                "总金额(元)": [],
-                "交易日期": [],
-                "备注": []
+                "资产类型": ["STOCK_A"],
+                "代码": [""],
+                "名称": [""],
+                "份数": [0.0],
+                "总金额(元)": [0.0],
+                "交易日期": [datetime.now().date()],
+                "备注": [""]
             })
             st.rerun()
 
