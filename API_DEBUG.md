@@ -359,114 +359,6 @@ curl -X DELETE http://localhost:8000/api/trades/1
 
 ---
 
-## 告警规则管理
-
-### 创建告警规则
-
-#### 价格告警（股票突破 2000 元）
-```bash
-curl -X POST http://localhost:8000/api/alerts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "asset_type": "STOCK_A",
-    "symbol": "sh600519",
-    "metric": "PRICE",
-    "operator": ">",
-    "threshold": 2000.0,
-    "notes": "茅台价格突破2000元"
-  }'
-```
-
-#### 涨跌幅告警（跌超 5%）
-```bash
-curl -X POST http://localhost:8000/api/alerts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "asset_type": "STOCK_A",
-    "symbol": "sh600519",
-    "metric": "CHANGE_PCT",
-    "operator": "<",
-    "threshold": -5.0,
-    "notes": "茅台跌超5%"
-  }'
-```
-
-#### 成交量告警（异常放量）
-```bash
-curl -X POST http://localhost:8000/api/alerts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "asset_type": "STOCK_A",
-    "symbol": "sh600519",
-    "metric": "VOLUME",
-    "operator": ">",
-    "threshold": 100000000.0,
-    "notes": "茅台成交量超过1亿"
-  }'
-```
-
-**预期响应**:
-```json
-{
-  "id": 1,
-  "asset_type": "STOCK_A",
-  "symbol": "sh600519",
-  "metric": "PRICE",
-  "operator": ">",
-  "threshold": 2000.0,
-  "is_active": true,
-  "notes": "茅台价格突破2000元"
-}
-```
-
-### 查看所有告警规则
-```bash
-curl -X GET http://localhost:8000/api/alerts
-```
-
-### 查看启用的告警规则
-```bash
-curl -X GET "http://localhost:8000/api/alerts?is_active=true"
-```
-
-### 查看禁用的告警规则
-```bash
-curl -X GET "http://localhost:8000/api/alerts?is_active=false"
-```
-
-### 查看指定告警规则
-```bash
-curl -X GET http://localhost:8000/api/alerts/1
-```
-
-### 修改告警规则
-```bash
-curl -X PATCH http://localhost:8000/api/alerts/1 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "threshold": 2100.0,
-    "notes": "更新突破价格为2100元"
-  }'
-```
-
-### 切换告警规则的启用/禁用状态
-```bash
-curl -X PATCH http://localhost:8000/api/alerts/1/toggle \
-  -H "Content-Type: application/json" \
-  -d '{
-    "is_active": false
-  }'
-```
-
-### 删除告警规则
-```bash
-curl -X DELETE http://localhost:8000/api/alerts/1
-```
-
-**预期响应**: HTTP Status 204 No Content
-
----
-
 ## 常用调试技巧
 
 ### 1. 格式化 JSON 响应
@@ -862,18 +754,10 @@ curl http://localhost:8000/api/portfolio/market-cache
 # 查看所有交易
 curl http://localhost:8000/api/trades
 
-# 查看所有告警
-curl http://localhost:8000/api/alerts
-
 # 添加新交易
 curl -X POST http://localhost:8000/api/trades \
   -H "Content-Type: application/json" \
   -d '{"asset_type":"STOCK_A","symbol":"sh600519","trade_date":"2024-01-15T10:00:00","trade_type":"BUY","price":1700,"quantity":100,"commission":5}'
-
-# 添加告警规则
-curl -X POST http://localhost:8000/api/alerts \
-  -H "Content-Type: application/json" \
-  -d '{"asset_type":"STOCK_A","symbol":"sh600519","metric":"PRICE","operator":">","threshold":2000}'
 ```
 
 ---

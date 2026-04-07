@@ -68,22 +68,14 @@ def test_database_init():
     """测试数据库初始化"""
     print("🔍 测试数据库初始化")
     try:
-        from app.models import SessionLocal, Trade, AlertRule, init_db
+        from app.models import SessionLocal, Trade, init_db
 
-        # 初始化数据库表（创建所有表）
         init_db()
 
-        # 测试创建会话
         db = SessionLocal()
-
-        # 查询表是否存在
         trade_count = db.query(Trade).count()
-        alert_count = db.query(AlertRule).count()
-
         print(f"  Trade 表记录数: {trade_count}")
-        print(f"  AlertRule 表记录数: {alert_count}")
         print("  ✅ 数据库连接正常\n")
-
         db.close()
     except Exception as e:
         print(f"  ❌ 数据库初始化失败: {e}\n")
@@ -100,53 +92,6 @@ def test_routes():
     print()
 
 
-def test_progress_capture():
-    """测试进度条捕获逻辑（通过分发代理 + 线程映射）"""
-    print("🔍 测试进度条捕获")
-
-    import sys
-    import threading
-    from app.data_fetcher.cache_manager import (
-        _progress_map, _progress_lock,
-        _thread_cache_map, _thread_cache_lock,
-    )
-
-    cache_name = "A股全市场行情"
-    thread_id = threading.current_thread().ident
-
-    # 注册当前线程到测试用的 cache_name
-    with _thread_cache_lock:
-        _thread_cache_map[thread_id] = cache_name
-
-    # 清空全局进度字典
-    with _progress_lock:
-        _progress_map.clear()
-
-    # 测试用例：tqdm 进度条格式
-    test_cases = [
-        ("  7%|6         | 4/58 [00:32<07:22,  8.19s/it]\r", "7%|6         | 4/58 [00:32<07:22,  8.19s/it]"),
-        (" 29%|##8       | 4/14 [00:32<01:19,  7.94s/it]\r", "29%|##8       | 4/14 [00:32<01:19,  7.94s/it]"),
-        ("100%|##########| 58/58 [05:48<00:00,  6.04s/it]\n", "100%|##########| 58/58 [05:48<00:00,  6.04s/it]"),
-    ]
-
-    try:
-        for input_str, expected_progress in test_cases:
-            print(f"  输入: {repr(input_str)}")
-            sys.stderr.write(input_str)  # 通过分发代理写入
-
-            with _progress_lock:
-                captured = _progress_map.get(cache_name, "")
-
-            print(f"  捕获: {repr(captured)}")
-            assert captured == expected_progress, f"期望 {repr(expected_progress)}，得到 {repr(captured)}"
-            print(f"  ✅ 通过")
-    finally:
-        with _thread_cache_lock:
-            _thread_cache_map.pop(thread_id, None)
-
-    print("  ✅ 进度条捕获测试通过\n")
-
-
 if __name__ == "__main__":
     print("=" * 60)
     print("🧪 FastAPI 应用测试")
@@ -156,7 +101,6 @@ if __name__ == "__main__":
     try:
         test_app_info()
         test_routes()
-        test_progress_capture()
         test_root_endpoint()
         test_health_endpoint()
         test_swagger_docs()

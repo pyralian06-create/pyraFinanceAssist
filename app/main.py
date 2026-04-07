@@ -6,12 +6,9 @@ FastAPI 应用入口
 - 配置中间件（CORS、异常处理）
 - 管理应用生命周期（启动、关闭）
 - 挂载 API 路由
-- 启动后台盯盘守护进程（异步）
 """
 
 import logging
-import threading
-import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,10 +48,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ 触发同步任务失败: {e}")
 
-    # TODO: 启动盯盘守护进程（阶段 3）
-    # from app.monitor.daemon import start_monitor_daemon
-    # monitor_task = asyncio.create_task(start_monitor_daemon())
-
     logger.info("✅ 应用启动完成")
     yield
 
@@ -66,7 +59,7 @@ async def lifespan(app: FastAPI):
 # ==================== 创建 FastAPI 应用 ====================
 app = FastAPI(
     title="个人金融助手",
-    description="轻量级持仓分析与实时盯盘工具 v0.1.0",
+    description="轻量级持仓分析与盈亏工具 v0.1.0",
     version="0.1.0",
     lifespan=lifespan
 )
@@ -118,12 +111,10 @@ def root():
 # ==================== API 路由挂载 ====================
 from app.api.trades import router as trades_router
 from app.api.portfolio import router as portfolio_router
-from app.api.alerts import router as alerts_router
 from app.api.market import router as market_router
 
 app.include_router(trades_router, prefix="/api/trades", tags=["Trades"])
 app.include_router(portfolio_router, prefix="/api/portfolio", tags=["Portfolio"])
-app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
 app.include_router(market_router, prefix="/api/market", tags=["Market"])
 
 

@@ -199,15 +199,3 @@ def get_history(symbol: str = 'Au99.99') -> List[HistoricalBar]:
     except Exception as e:
         logger.error(f"❌ 获取黄金 {symbol} 历史数据失败: {e}")
         raise ValueError(f"无法获取黄金 {symbol} 历史数据: {e}")
-
-
-# 注意：黄金告警限制
-"""
-SGE 黄金数据不支持 VOLUME 告警。如果用户为黄金设置 VOLUME 告警，
-monitor 模块应跳过该规则并记录警告。
-
-建议处理方式：
-1. 在 AlertRule 模型中添加 supported_metrics（每个资产类型支持的指标）
-2. 或在创建告警规则时验证：GOLD_SPOT 仅允许 PRICE/CHANGE_PCT
-3. 或在 monitor 规则引擎中，发现不支持的指标时自动跳过
-"""

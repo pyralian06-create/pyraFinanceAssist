@@ -30,7 +30,7 @@ python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - ReDoc 文档：http://localhost:8000/redoc
 - 健康检查：http://localhost:8000/health
 
-### 启动 Streamlit 前端（待实现）
+### 启动 Streamlit 前端
 
 ```bash
 streamlit run dashboard/app.py
@@ -43,12 +43,11 @@ streamlit run dashboard/app.py
 FastAPI (后端)
 ├── /api/trades      ← 交易流水 CRUD
 ├── /api/portfolio   ← 持仓汇总
-└── /api/alerts      ← 告警规则管理
+└── /api/market      ← 市场标的搜索与校验
 
 Streamlit (前端)
-├── 持仓大屏
-├── 交易录入
-└── 告警配置
+├── 持仓看板与流水（app.py）
+└── 交易录入（pages/01_trade_entry.py）
 ```
 
 ## 数据库
@@ -100,9 +99,7 @@ A: 编辑 `.env` 中的 `DATABASE_URL`
 DATABASE_URL=sqlite:////path/to/finance_data.db
 ```
 
-## 下一步
+## 下一步（可选）
 
-- 实现 `app/data_fetcher/` - 行情数据接入
-- 实现 `app/pnl_engine/` - 盈亏计算引擎  
-- 实现 `app/api/` - API 路由
-- 实现 `app/ledger/` - 交易管理服务
+- 完善 `app/ledger/` 独立服务层（当前 CRUD 在 `app/api/trades`）
+- 扩展看板或报表需求见 `CLAUDE.md`
