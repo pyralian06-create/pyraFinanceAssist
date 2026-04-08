@@ -77,7 +77,7 @@ class TestBasicTrades:
         test_db.commit()
 
         # Mock 行情数据：当前价 110
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('110'))
             }
@@ -123,7 +123,7 @@ class TestBasicTrades:
         test_db.commit()
 
         # Mock 行情：当前价 125，剩余 50 股
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('125'))
             }
@@ -172,7 +172,7 @@ class TestBasicTrades:
             test_db.add(trade)
         test_db.commit()
 
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('100'))
             }
@@ -217,7 +217,7 @@ class TestWeightedAverageCost:
             test_db.add(trade)
         test_db.commit()
 
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('120'))
             }
@@ -259,7 +259,7 @@ class TestWeightedAverageCost:
             test_db.add(trade)
         test_db.commit()
 
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('110')),
                 ('FUND', '510300'): mock_quote_data('510300', Decimal('3.7')),
@@ -295,7 +295,7 @@ class TestQuoteFallback:
         test_db.commit()
 
         # Mock 返回 None（行情拉取失败）
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): None
             }
@@ -334,7 +334,7 @@ class TestQuoteFallback:
         test_db.commit()
 
         # 只返回一个行情
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('120')),
                 ('STOCK_A', 'sh000001'): None,  # 失败
@@ -385,7 +385,7 @@ class TestAssetTypeFilter:
         test_db.commit()
 
         # 只查询 A 股
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('110')),
             }
@@ -398,7 +398,7 @@ class TestAssetTypeFilter:
         assert result.total_assets == Decimal('11000')  # 100 * 110
 
         # 查询基金
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('FUND', '510300'): mock_quote_data('510300', Decimal('3.7')),
             }
@@ -427,7 +427,7 @@ class TestEdgeCases:
         test_db.add(trade)
         test_db.commit()
 
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh600519'): mock_quote_data('sh600519', Decimal('110'))
             }
@@ -452,7 +452,7 @@ class TestEdgeCases:
         test_db.add(trade)
         test_db.commit()
 
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('FUND', '005827'): mock_quote_data('005827', Decimal('1.5'))
             }
@@ -479,7 +479,7 @@ class TestEdgeCases:
         test_db.add(trade)
         test_db.commit()
 
-        with patch('app.pnl_engine.calculator.get_quote_batch') as mock_quotes:
+        with patch('app.pnl_engine.calculator.get_quote_batch_direct') as mock_quotes:
             mock_quotes.return_value = {
                 ('STOCK_A', 'sh000001'): mock_quote_data('sh000001', Decimal('55000'))
             }
