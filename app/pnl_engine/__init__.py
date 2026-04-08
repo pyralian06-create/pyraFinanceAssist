@@ -8,5 +8,17 @@
 """
 
 from app.pnl_engine.calculator import calculate_portfolio
+from app.pnl_engine.daily_pnl import (
+    rebuild_daily_marks,
+    query_portfolio_daily_series,
+    query_leg_daily_series,
+    get_today_pnl,
+)
 
-__all__ = ['calculate_portfolio']
+__all__ = [
+    "calculate_portfolio",
+    "rebuild_daily_marks",
+    "query_portfolio_daily_series",
+    "query_leg_daily_series",
+    "get_today_pnl",
+]

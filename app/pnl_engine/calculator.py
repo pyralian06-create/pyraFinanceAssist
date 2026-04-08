@@ -7,7 +7,6 @@
 3. 结合最新行情计算浮动盈亏
 """
 
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Dict, List, Tuple, Optional
 from sqlalchemy.orm import Session
@@ -17,81 +16,17 @@ from app.models.trade import Trade
 from app.models.market_symbol import MarketSymbol
 from app.data_fetcher import get_quote_batch_direct
 from app.schemas.portfolio import PositionDetail, PortfolioSummary
-
+from app.pnl_engine.position_state import PositionState, process_trades
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class _PositionState:
-    """内部：按标的维护的持仓状态"""
-    asset_type: str
-    symbol: str
-    holding_quantity: Decimal = Decimal('0')
-    total_cost: Decimal = Decimal('0')  # 总成本（含手续费）
-    realized_pnl: Decimal = Decimal('0')  # 已实现盈亏
-
-
-def _process_trades(trades: List[Trade]) -> Dict[Tuple[str, str], _PositionState]:
-    """
-    处理交易列表，计算每只资产的持仓状态
-
-    Args:
-        trades: 按 trade_date 排序的交易列表
-
-    Returns:
-        Dict, key=(asset_type, symbol), value=_PositionState
-    """
-    states: Dict[Tuple[str, str], _PositionState] = {}
-
-    for trade in trades:
-        key = (trade.asset_type, trade.symbol)
-
-        # 首次出现该标的，初始化状态
-        if key not in states:
-            states[key] = _PositionState(
-                asset_type=trade.asset_type,
-                symbol=trade.symbol
-            )
-
-        state = states[key]
-        price = Decimal(str(trade.price))
-        quantity = Decimal(str(trade.quantity))
-        commission = Decimal(str(trade.commission or 0))
-
-        if trade.trade_type == 'BUY':
-            # 买入：增加成本和持仓
-            state.total_cost += price * quantity + commission
-            state.holding_quantity += quantity
-
-        elif trade.trade_type == 'SELL':
-            # 卖出：计算已实现盈亏，减少持仓
-            if state.holding_quantity > Decimal('0'):
-                avg_cost = state.total_cost / state.holding_quantity
-                realized = (price - avg_cost) * quantity - commission
-                state.realized_pnl += realized
-
-                # 按卖出比例减少总成本
-                state.total_cost -= avg_cost * quantity
-                state.holding_quantity -= quantity
-
-                # 防止浮点错误导致持仓数量为负小数
-                if state.holding_quantity < Decimal('0'):
-                    logger.warning(
-                        f"{key}: 持仓数量变为负值，已夹紧到 0 "
-                        f"(原值: {state.holding_quantity})"
-                    )
-                    state.holding_quantity = Decimal('0')
-
-        elif trade.trade_type == 'DIVIDEND':
-            # 分红：增加已实现盈亏，不影响持仓
-            state.realized_pnl += price * quantity
-
-    return states
+# 向后兼容别名
+_PositionState = PositionState
+_process_trades = process_trades
 
 
 def _build_position_detail(
-    state: _PositionState,
+    state: PositionState,
     current_price: Optional[Decimal]
 ) -> PositionDetail:
     """
@@ -163,7 +98,7 @@ def calculate_portfolio(
     trades = query.all()
 
     # 2. 处理交易，计算持仓状态
-    states = _process_trades(trades)
+    states = process_trades(trades)
 
     # 3. 筛选活跃持仓
     active_positions = [
@@ -224,7 +159,7 @@ def calculate_portfolio(
         position = _build_position_detail(state, current_price)
         # 补全名称
         position.name = symbol_to_name.get(symbol, "")
-        
+
         positions.append(position)
 
     # 6. 汇总

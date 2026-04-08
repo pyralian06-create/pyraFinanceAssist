@@ -7,6 +7,7 @@ ORM 模型包
 from app.models.database import Base, engine, SessionLocal, get_db, init_db
 from app.models.trade import Trade
 from app.models.market_symbol import MarketSymbol
+from app.models.position_daily_mark import PositionDailyMark
 
 __all__ = [
     "Base",
@@ -16,4 +17,5 @@ __all__ = [
     "init_db",
     "Trade",
     "MarketSymbol",
+    "PositionDailyMark",
 ]
