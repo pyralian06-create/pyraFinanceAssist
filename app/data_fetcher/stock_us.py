@@ -19,6 +19,7 @@ except ImportError:
     yf = None
 
 from .schemas import QuoteData, HistoricalBar
+from .yfinance_retry import run_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def get_quote_direct(symbol: str) -> QuoteData:
     if yf is None:
         raise ImportError("yfinance not installed")
 
-    try:
+    def _once() -> QuoteData:
         logger.info(f"📈 直查美股 {symbol}...")
         ticker = yf.Ticker(symbol)
         info = ticker.fast_info
@@ -67,6 +68,8 @@ def get_quote_direct(symbol: str) -> QuoteData:
         logger.info(f"✅ {symbol}: ${quote.current_price} ({quote.change_pct:+.2f}%)")
         return quote
 
+    try:
+        return run_with_backoff(f"美股 {symbol}", _once)
     except Exception as e:
         logger.error(f"❌ 直查美股 {symbol} 失败: {e}")
         raise ValueError(f"无法获取美股 {symbol} 实时行情: {e}")
@@ -96,7 +99,7 @@ def get_history(
     if yf is None:
         raise ImportError("yfinance not installed")
 
-    try:
+    def _once() -> List[HistoricalBar]:
         logger.info(f"📊 拉取美股 {symbol} 历史数据 ({start_date or '*'} 至 {end_date or '*'})...")
 
         ticker = yf.Ticker(symbol)
@@ -111,7 +114,6 @@ def get_history(
             logger.warning(f"⚠️ 美股 {symbol} 无历史数据")
             return []
 
-        # 转换为 HistoricalBar 列表
         bars = []
         for date, row in df.iterrows():
             bar = HistoricalBar(
@@ -121,13 +123,15 @@ def get_history(
                 high=Decimal(str(row['High'])) if pd.notna(row.get('High')) else Decimal('0'),
                 low=Decimal(str(row['Low'])) if pd.notna(row.get('Low')) else Decimal('0'),
                 volume=float(row['Volume']) if pd.notna(row.get('Volume')) else None,
-                change_pct=None  # yfinance 不直接提供日涨跌幅，但用户可自行计算
+                change_pct=None
             )
             bars.append(bar)
 
         logger.info(f"✅ 获取 {len(bars)} 条 K线")
         return bars
 
+    try:
+        return run_with_backoff(f"美股历史 {symbol}", _once)
     except Exception as e:
         logger.error(f"❌ 获取美股 {symbol} 历史数据失败: {e}")
         raise ValueError(f"无法获取美股 {symbol} 历史数据: {e}")

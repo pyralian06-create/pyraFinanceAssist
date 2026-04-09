@@ -114,8 +114,9 @@ def get_quote_batch_direct(
     if not positions:
         return results
 
+    # Yahoo 对并发敏感，worker 过多易触发 Too Many Requests
     logger.info(f"🔄 并发直查 {len(positions)} 个持仓...")
-    with ThreadPoolExecutor(max_workers=min(len(positions), 5)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(positions), 2)) as executor:
         future_to_pos = {
             executor.submit(get_quote_direct, asset_type, symbol): (asset_type, symbol)
             for asset_type, symbol in positions

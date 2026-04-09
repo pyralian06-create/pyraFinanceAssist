@@ -32,10 +32,16 @@ def search_market_symbols(
     
     # 模糊匹配 symbol, name 或 pinyin
     search_filter = (
-        MarketSymbol.symbol.like(f"{q}%") | 
-        MarketSymbol.name.like(f"%{q}%") | 
-        MarketSymbol.pinyin.like(f"%{q}%")
+        MarketSymbol.symbol.like(f"{q}%")
+        | MarketSymbol.name.like(f"%{q}%")
+        | MarketSymbol.pinyin.like(f"%{q}%")
     )
+    # 港股库内为 5 位（如 00700），用户常搜 4 位（0700）→ 前缀匹配不到，补港股等值匹配
+    if q.isdigit() and 1 <= len(q) <= 5:
+        search_filter = search_filter | (
+            (MarketSymbol.asset_type == "STOCK_HK")
+            & (MarketSymbol.symbol == q.zfill(5))
+        )
     
     # 优先返回活跃的标的
     results = query.filter(search_filter).order_by(

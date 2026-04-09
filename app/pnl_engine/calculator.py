@@ -122,22 +122,50 @@ def calculate_portfolio(
         for pos in active_positions
     }
 
+    def _hk_symbol_lookup_keys(sym: str) -> List[str]:
+        """港股代码多种写法兼容；库内为 5 位（如 00700），优先匹配以免与后四位碰撞。"""
+        s = sym.strip()
+        if not s.isdigit():
+            return [s]
+        keys: List[str] = []
+        z5 = s.zfill(5)
+        for k in (z5, s, z5[-4:] if len(z5) >= 4 else s, s.lstrip("0") or "0"):
+            if k not in keys:
+                keys.append(k)
+        return keys
+
     # 建立 (asset_type, symbol) -> 名称 的映射
     symbol_to_name = {}
     for asset_type, symbol in position_key_to_orig.keys():
         norm_symbol = normalize(symbol)
 
-        # 如果是 FUND 类型，需要查询所有基金子类型 (FUND_OPEN, FUND_ETF, FUND_LOF 等)
+        market_info = None
+
         if asset_type == "FUND":
             market_info = db.query(MarketSymbol).filter(
                 MarketSymbol.symbol == norm_symbol,
                 MarketSymbol.asset_type.in_(["FUND", "FUND_OPEN", "FUND_ETF", "FUND_LOF"])
             ).first()
+        elif asset_type == "STOCK_HK":
+            for key in _hk_symbol_lookup_keys(norm_symbol):
+                market_info = db.query(MarketSymbol).filter(
+                    MarketSymbol.asset_type == "STOCK_HK",
+                    MarketSymbol.symbol == key,
+                ).first()
+                if market_info:
+                    break
+        elif asset_type == "STOCK_US":
+            for key in (norm_symbol.upper(), norm_symbol):
+                market_info = db.query(MarketSymbol).filter(
+                    MarketSymbol.asset_type == "STOCK_US",
+                    MarketSymbol.symbol == key,
+                ).first()
+                if market_info:
+                    break
         else:
-            # 其他资产类型精确匹配
             market_info = db.query(MarketSymbol).filter(
                 MarketSymbol.asset_type == asset_type,
-                MarketSymbol.symbol == norm_symbol
+                MarketSymbol.symbol == norm_symbol,
             ).first()
 
         if market_info:

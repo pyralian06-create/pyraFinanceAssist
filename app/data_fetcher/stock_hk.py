@@ -20,6 +20,7 @@ except ImportError:
     yf = None
 
 from .schemas import QuoteData, HistoricalBar
+from .yfinance_retry import run_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +45,8 @@ def get_quote_direct(symbol: str) -> QuoteData:
     if yf is None:
         raise ImportError("yfinance not installed")
 
-    try:
+    def _once() -> QuoteData:
         logger.info(f"📈 直查港股 {symbol}...")
-        # yfinance 格式：0700.HK
         ticker = yf.Ticker(f"{symbol}.HK")
         info = ticker.fast_info
 
@@ -57,7 +57,7 @@ def get_quote_direct(symbol: str) -> QuoteData:
 
         quote = QuoteData(
             symbol=symbol,
-            name="",  # yfinance 不返回中文名称，由数据库补全
+            name="",
             current_price=current_price,
             previous_close=prev_close,
             change_amount=change_amount,
@@ -69,6 +69,8 @@ def get_quote_direct(symbol: str) -> QuoteData:
         logger.info(f"✅ {symbol}: HK${quote.current_price} ({quote.change_pct:+.2f}%)")
         return quote
 
+    try:
+        return run_with_backoff(f"港股 {symbol}", _once)
     except Exception as e:
         logger.error(f"❌ 直查港股 {symbol} 失败: {e}")
         raise ValueError(f"无法获取港股 {symbol} 实时行情: {e}")
@@ -98,12 +100,11 @@ def get_history(
     if yf is None:
         raise ImportError("yfinance not installed")
 
-    try:
+    def _once() -> List[HistoricalBar]:
         logger.info(f"📊 拉取港股 {symbol} 历史数据 ({start_date or '*'} 至 {end_date or '*'})...")
 
         ticker = yf.Ticker(f"{symbol}.HK")
 
-        # 将 YYYYMMDD 格式转为 YYYY-MM-DD
         start = start_date[:4] + "-" + start_date[4:6] + "-" + start_date[6:8] if start_date else None
         end = end_date[:4] + "-" + end_date[4:6] + "-" + end_date[6:8] if end_date else None
 
@@ -113,7 +114,6 @@ def get_history(
             logger.warning(f"⚠️ 港股 {symbol} 无历史数据")
             return []
 
-        # 转换为 HistoricalBar 列表
         bars = []
         for date, row in df.iterrows():
             bar = HistoricalBar(
@@ -123,13 +123,15 @@ def get_history(
                 high=Decimal(str(row['High'])) if pd.notna(row.get('High')) else Decimal('0'),
                 low=Decimal(str(row['Low'])) if pd.notna(row.get('Low')) else Decimal('0'),
                 volume=float(row['Volume']) if pd.notna(row.get('Volume')) else None,
-                change_pct=None  # yfinance 不直接提供日涨跌幅，但用户可自行计算
+                change_pct=None
             )
             bars.append(bar)
 
         logger.info(f"✅ 获取 {len(bars)} 条 K线")
         return bars
 
+    try:
+        return run_with_backoff(f"港股历史 {symbol}", _once)
     except Exception as e:
         logger.error(f"❌ 获取港股 {symbol} 历史数据失败: {e}")
         raise ValueError(f"无法获取港股 {symbol} 历史数据: {e}")

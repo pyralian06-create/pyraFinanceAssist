@@ -10,6 +10,7 @@
 数据来源：后端 /api/portfolio/daily-pnl 及相关接口
 """
 
+import os
 import streamlit as st
 import httpx
 import pandas as pd
@@ -24,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = "http://localhost:8000/api"
+API_BASE = os.environ.get("PYRA_API_BASE", "http://127.0.0.1:8000/api")
 
 # ────────────────────────────────────────────────────────────
 # 工具函数
@@ -32,7 +33,12 @@ API_BASE = "http://localhost:8000/api"
 
 def api_get(path: str, params: dict = None, timeout: int = 30):
     try:
-        r = httpx.get(f"{API_BASE}{path}", params=params or {}, timeout=timeout)
+        r = httpx.get(
+            f"{API_BASE}{path}",
+            params=params or {},
+            timeout=timeout,
+            trust_env=False,
+        )
         if r.status_code == 200:
             return r.json(), None
         return None, f"HTTP {r.status_code}: {r.text[:200]}"
@@ -42,7 +48,12 @@ def api_get(path: str, params: dict = None, timeout: int = 30):
 
 def api_post(path: str, params: dict = None, timeout: int = 120):
     try:
-        r = httpx.post(f"{API_BASE}{path}", params=params or {}, timeout=timeout)
+        r = httpx.post(
+            f"{API_BASE}{path}",
+            params=params or {},
+            timeout=timeout,
+            trust_env=False,
+        )
         if r.status_code == 200:
             return r.json(), None
         return None, f"HTTP {r.status_code}: {r.text[:200]}"

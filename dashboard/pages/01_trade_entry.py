@@ -8,6 +8,7 @@
 - 提交至后端 API
 """
 
+import os
 import streamlit as st
 import httpx
 import json
@@ -21,8 +22,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# 后端 API 基础 URL
-API_BASE = "http://localhost:8000/api"
+# 后端 API（与主页一致，可用 PYRA_API_BASE 覆盖）
+API_BASE = os.environ.get("PYRA_API_BASE", "http://127.0.0.1:8000/api")
 
 # ────────────────────────────────────────────────────────────────
 # 工具函数
@@ -34,7 +35,8 @@ def search_symbols(query, asset_type=None):
         r = httpx.get(
             f"{API_BASE}/market/search",
             params={"q": query, "limit": 20},
-            timeout=5
+            timeout=5,
+            trust_env=False,
         )
         if r.status_code == 200:
             results = r.json()
@@ -77,7 +79,12 @@ def format_asset_type(asset_type):
 def submit_trade(payload):
     """提交交易记录"""
     try:
-        r = httpx.post(f"{API_BASE}/trades", json=payload, timeout=10)
+        r = httpx.post(
+            f"{API_BASE}/trades",
+            json=payload,
+            timeout=10,
+            trust_env=False,
+        )
         if r.status_code == 201:
             return True, "✅ 录入成功"
         else:
@@ -451,7 +458,8 @@ with tab2:
                         r = httpx.get(
                             f"{API_BASE}/market/search",
                             params={"q": code, "limit": 1},
-                            timeout=5
+                            timeout=5,
+                            trust_env=False,
                         )
                         if r.status_code == 200:
                             results = r.json()

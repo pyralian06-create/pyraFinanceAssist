@@ -1,7 +1,9 @@
 import logging
 import threading
+import time
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Callable, Dict, List, Optional, TypeVar
+
 import pandas as pd
 
 try:
@@ -18,9 +20,30 @@ from app.models.database import SessionLocal
 from app.models.market_symbol import MarketSymbol
 from sqlalchemy.dialects.sqlite import insert
 
-from app.data_fetcher.network import domestic_direct_connection
+from app.data_fetcher.network import EASTMONEY_LIST_READ_TIMEOUT, domestic_direct_connection
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def _eastmoney_spot_em_with_retry(label: str, fetcher: Callable[[], T]) -> T:
+    """
+    东财 push2 全量名单接口数据量大、分页多，默认 requests 读超时 15s 常触发 Read timed out。
+    使用 domestic_direct_connection 延长读超时，并最多重试 3 次。
+    """
+    last_err: Optional[BaseException] = None
+    for attempt in range(3):
+        try:
+            with domestic_direct_connection(read_timeout=EASTMONEY_LIST_READ_TIMEOUT):
+                return fetcher()
+        except BaseException as e:
+            last_err = e
+            logger.warning(f"⚠️ {label} 抓取重试 {attempt + 1}/3: {e}")
+            if attempt < 2:
+                time.sleep(3.0 * (attempt + 1))
+    assert last_err is not None
+    raise last_err
 
 def get_pinyin_abbr(text: str) -> str:
     """生成中文文本的拼音首字母缩写"""
@@ -37,7 +60,7 @@ def sync_market_symbols() -> None:
     """
     全量同步市场标的名录（后台任务）
 
-    聚合：A股 (sh/sz/bj), ETF, LOF, 开放式基金, 港股, 美股
+    聚合：A股、ETF、LOF、开放式基金、港股、美股。
     """
     if ak is None:
         logger.error("❌ 同步失败: akshare 未安装")
@@ -47,13 +70,11 @@ def sync_market_symbols() -> None:
         start_time = datetime.now()
         logger.info("🔄 [后台] 开始同步全市场标的名录...")
         
-        all_symbols = [] 
+        all_symbols: List[Dict[str, Any]] = []
 
         # 1. A股名单 (沪深京)
         try:
-            # 改用 stock_zh_a_spot_em 接口获取名单，极其稳定
-            with domestic_direct_connection():
-                df_a = ak.stock_zh_a_spot_em()
+            df_a = _eastmoney_spot_em_with_retry("A股名单", lambda: ak.stock_zh_a_spot_em())
             for _, row in df_a.iterrows():
                 symbol = str(row['代码'])
                 name = str(row['名称'])
@@ -70,8 +91,7 @@ def sync_market_symbols() -> None:
 
         # 2. ETF名单
         try:
-            with domestic_direct_connection():
-                df_etf = ak.fund_etf_spot_em()
+            df_etf = _eastmoney_spot_em_with_retry("ETF名单", lambda: ak.fund_etf_spot_em())
             for _, row in df_etf.iterrows():
                 symbol = str(row['代码'])
                 name = str(row['名称'])
@@ -88,8 +108,7 @@ def sync_market_symbols() -> None:
 
         # 3. LOF名单
         try:
-            with domestic_direct_connection():
-                df_lof = ak.fund_lof_spot_em()
+            df_lof = _eastmoney_spot_em_with_retry("LOF名单", lambda: ak.fund_lof_spot_em())
             for _, row in df_lof.iterrows():
                 symbol = str(row['代码'])
                 name = str(row['名称'])
@@ -106,7 +125,7 @@ def sync_market_symbols() -> None:
 
         # 4. 开放式基金
         try:
-            with domestic_direct_connection():
+            with domestic_direct_connection(read_timeout=EASTMONEY_LIST_READ_TIMEOUT):
                 df_open = ak.fund_open_fund_daily_em()
             for _, row in df_open.iterrows():
                 symbol = str(row['基金代码'])
@@ -124,11 +143,14 @@ def sync_market_symbols() -> None:
 
         # 5. 港股名单
         try:
-            with domestic_direct_connection():
-                df_hk = ak.stock_hk_spot_em()
+            df_hk = _eastmoney_spot_em_with_retry("港股名单", lambda: ak.stock_hk_spot_em())
             for _, row in df_hk.iterrows():
-                code = str(row['代码'])  # AkShare 返回 5位零填充格式，如 00700
-                symbol = code.lstrip('0') or '0'  # 去掉前导零，至少保留一个 0；如 00700 -> 0700
+                code = str(row['代码']).strip()  # 东财常见 5 位零填充，如 00700、09988
+                # 必须用 5 位规范码入库：取后 4 位会碰撞（如 00700 与 x10700 都变成 0700），UPSERT 会覆盖成错误名称
+                if code.isdigit():
+                    symbol = code.zfill(5)
+                else:
+                    symbol = code
                 name = str(row['名称'])
                 all_symbols.append({
                     "symbol": symbol,
@@ -143,8 +165,7 @@ def sync_market_symbols() -> None:
 
         # 6. 美股名单
         try:
-            with domestic_direct_connection():
-                df_us = ak.stock_us_spot_em()
+            df_us = _eastmoney_spot_em_with_retry("美股名单", lambda: ak.stock_us_spot_em())
             for _, row in df_us.iterrows():
                 code = str(row['代码'])  # AkShare 返回 编码.ticker 格式，如 105.AAPL
                 # 提取纯 ticker（AAPL）

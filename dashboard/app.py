@@ -6,6 +6,7 @@ pyraFinanceAssist 前端看板 - 主入口
 - 子页 (pages/01_trade_entry.py): 交易录入
 """
 
+import os
 import streamlit as st
 import httpx
 import json
@@ -21,8 +22,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 后端 API 基础 URL
-API_BASE = "http://localhost:8000/api"
+# 后端 API：默认 127.0.0.1（避免 localhost 走系统代理导致 502）；可用环境变量覆盖
+API_BASE = os.environ.get("PYRA_API_BASE", "http://127.0.0.1:8000/api")
+
+# 持仓汇总会并发拉多路行情，易超过 30s；502 多为代理/网关对慢请求或 localhost 处理异常
+_HTTPX_TIMEOUT = httpx.Timeout(connect=15.0, read=180.0, write=60.0, pool=60.0)
+_HTTPX_SHORT = httpx.Timeout(connect=15.0, read=30.0, write=30.0, pool=30.0)
 
 # ────────────────────────────────────────────────────────────────
 # 工具函数
@@ -35,16 +40,36 @@ def get_portfolio_data(asset_type_filter=None):
     if asset_type_filter:
         params["asset_type"] = asset_type_filter
 
-    r = httpx.get(f"{API_BASE}/portfolio/summary", params=params, timeout=30)
+    try:
+        r = httpx.get(
+            f"{API_BASE}/portfolio/summary",
+            params=params,
+            timeout=_HTTPX_TIMEOUT,
+            trust_env=False,
+        )
+    except httpx.RequestError as e:
+        st.error(f"获取持仓数据失败（网络）: {e}")
+        return None
     if r.status_code != 200:
-        st.error(f"获取持仓数据失败: {r.status_code}")
+        hint = ""
+        if r.status_code in (502, 504):
+            hint = " 若出现 502/504，请确认本机已启动后端，并尝试设置 PYRA_API_BASE=http://127.0.0.1:8000/api、关闭对 localhost 的全局代理。"
+        st.error(f"获取持仓数据失败: HTTP {r.status_code}.{hint}")
         return None
     return r.json()
 
 
 def get_trades_data():
     """获取交易流水（不缓存，实时刷新）"""
-    r = httpx.get(f"{API_BASE}/trades", timeout=10)
+    try:
+        r = httpx.get(
+            f"{API_BASE}/trades",
+            timeout=_HTTPX_SHORT,
+            trust_env=False,
+        )
+    except httpx.RequestError as e:
+        st.error(f"获取交易流水失败（网络）: {e}")
+        return []
     if r.status_code != 200:
         st.error(f"获取交易流水失败: {r.status_code}")
         return []
@@ -53,7 +78,11 @@ def get_trades_data():
 
 def delete_trade(trade_id):
     """删除交易记录"""
-    r = httpx.delete(f"{API_BASE}/trades/{trade_id}", timeout=10)
+    r = httpx.delete(
+        f"{API_BASE}/trades/{trade_id}",
+        timeout=_HTTPX_SHORT,
+        trust_env=False,
+    )
     if r.status_code == 204:
         st.success(f"✅ 删除成功")
         st.rerun()
@@ -295,8 +324,9 @@ st.markdown("""
 **快速导航：** 点击侧边栏 "交易录入" 页面录入新交易。
 
 💡 **提示：**
-- 持仓数据每 30 秒自动刷新
+- 持仓数据约每 30 秒缓存刷新；拉行情较慢时单次请求最长约 3 分钟
 - 点击 🔄 按钮立即刷新所有数据
+- 若 HTTP 502：确认后端已启动，可用环境变量 `PYRA_API_BASE=http://127.0.0.1:8000/api`
 - 交易流水可搜索过滤
 """)
 
