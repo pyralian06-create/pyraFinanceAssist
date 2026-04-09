@@ -16,6 +16,7 @@ try:
 except ImportError:
     ak = None
 
+from .network import domestic_direct_connection
 from .schemas import QuoteData, HistoricalBar
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,8 @@ def get_quote_direct(symbol: str) -> QuoteData:
 
     try:
         logger.info(f"📈 直查 A股 {symbol}...")
-        df = ak.stock_bid_ask_em(symbol=norm_symbol)
+        with domestic_direct_connection():
+            df = ak.stock_bid_ask_em(symbol=norm_symbol)
 
         # 转换为 item→value 字典
         items = dict(zip(df['item'], df['value']))
@@ -112,13 +114,14 @@ def get_history(
 
     try:
         logger.info(f"📊 拉取 {symbol} 历史数据 ({start_date or '*'} 至 {end_date or '*'})...")
-        df = ak.stock_zh_a_hist(
-            symbol=norm_symbol,
-            period='daily',
-            start_date=start_date or '19700101',
-            end_date=end_date or '20500101',
-            adjust=adjust
-        )
+        with domestic_direct_connection():
+            df = ak.stock_zh_a_hist(
+                symbol=norm_symbol,
+                period='daily',
+                start_date=start_date or '19700101',
+                end_date=end_date or '20500101',
+                adjust=adjust
+            )
 
         if df.empty:
             logger.warning(f"⚠️ {symbol} 无历史数据")

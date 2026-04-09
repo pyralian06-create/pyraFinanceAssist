@@ -17,6 +17,7 @@ try:
 except ImportError:
     ak = None
 
+from .network import domestic_direct_connection
 from .schemas import QuoteData, HistoricalBar
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,8 @@ def get_quote_direct(symbol: str, fund_type: Optional[str] = None) -> QuoteData:
 
 def _get_etf_quote_direct(symbol: str) -> QuoteData:
     """ETF 直查实时价（通过 stock_bid_ask_em，ETF在交易所上市行为同股票）"""
-    df = ak.stock_bid_ask_em(symbol=symbol)
+    with domestic_direct_connection():
+        df = ak.stock_bid_ask_em(symbol=symbol)
     items = dict(zip(df['item'], df['value']))
 
     current_price = Decimal(str(items['最新']))
@@ -111,7 +113,8 @@ def _get_etf_quote_direct(symbol: str) -> QuoteData:
 
 def _get_nav_quote_direct(symbol: str) -> QuoteData:
     """LOF / 开放式基金直查净值（T+1，数据源本身限制，无法实时）"""
-    df = ak.fund_open_fund_info_em(symbol=symbol, indicator='单位净值走势')
+    with domestic_direct_connection():
+        df = ak.fund_open_fund_info_em(symbol=symbol, indicator='单位净值走势')
     if df.empty:
         raise ValueError(f"基金 {symbol} 无数据")
     row = df.iloc[-1]
@@ -169,12 +172,13 @@ def get_history(
 def _get_etf_history(symbol: str, start_date: Optional[str], end_date: Optional[str]) -> List[HistoricalBar]:
     """ETF 历史数据"""
     logger.info(f"📊 拉取 ETF {symbol} 历史数据...")
-    df = ak.fund_etf_hist_em(
-        symbol=symbol,
-        period='daily',
-        start_date=start_date or '19700101',
-        end_date=end_date or '20500101'
-    )
+    with domestic_direct_connection():
+        df = ak.fund_etf_hist_em(
+            symbol=symbol,
+            period='daily',
+            start_date=start_date or '19700101',
+            end_date=end_date or '20500101'
+        )
 
     bars = []
     for _, row in df.iterrows():
@@ -195,12 +199,13 @@ def _get_etf_history(symbol: str, start_date: Optional[str], end_date: Optional[
 def _get_lof_history(symbol: str, start_date: Optional[str], end_date: Optional[str]) -> List[HistoricalBar]:
     """LOF 历史数据"""
     logger.info(f"📊 拉取 LOF {symbol} 历史数据...")
-    df = ak.fund_lof_hist_em(
-        symbol=symbol,
-        period='daily',
-        start_date=start_date or '19700101',
-        end_date=end_date or '20500101'
-    )
+    with domestic_direct_connection():
+        df = ak.fund_lof_hist_em(
+            symbol=symbol,
+            period='daily',
+            start_date=start_date or '19700101',
+            end_date=end_date or '20500101'
+        )
 
     bars = []
     for _, row in df.iterrows():
@@ -228,11 +233,12 @@ def _get_open_fund_history(symbol: str) -> List[HistoricalBar]:
     - 返回的列名可能因版本而异
     """
     logger.info(f"📊 拉取开放式基金 {symbol} 历史净值...")
-    df = ak.fund_open_fund_info_em(
-        symbol=symbol,
-        indicator='单位净值走势',
-        period='成立来'
-    )
+    with domestic_direct_connection():
+        df = ak.fund_open_fund_info_em(
+            symbol=symbol,
+            indicator='单位净值走势',
+            period='成立来'
+        )
 
     bars = []
     for _, row in df.iterrows():

@@ -19,6 +19,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Dict, Optional
 
+from app.data_fetcher.network import domestic_direct_connection
+
 logger = logging.getLogger(__name__)
 
 # 资产类型 → 货币代码映射
@@ -45,7 +47,8 @@ def _load_rates_akshare(currency: str, start: date, end: date) -> Dict[date, Dec
         import pandas as pd
 
         # 人民币汇率中间价（外汇局）
-        df = ak.currency_boc_safe()
+        with domestic_direct_connection():
+            df = ak.currency_boc_safe()
         # df 列名含 '美元' '港元' 等，行为日期
         col_map = {"HKD": "港元", "USD": "美元"}
         col = col_map.get(currency)

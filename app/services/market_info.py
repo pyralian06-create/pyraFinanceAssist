@@ -18,6 +18,8 @@ from app.models.database import SessionLocal
 from app.models.market_symbol import MarketSymbol
 from sqlalchemy.dialects.sqlite import insert
 
+from app.data_fetcher.network import domestic_direct_connection
+
 logger = logging.getLogger(__name__)
 
 def get_pinyin_abbr(text: str) -> str:
@@ -50,7 +52,8 @@ def sync_market_symbols() -> None:
         # 1. A股名单 (沪深京)
         try:
             # 改用 stock_zh_a_spot_em 接口获取名单，极其稳定
-            df_a = ak.stock_zh_a_spot_em()
+            with domestic_direct_connection():
+                df_a = ak.stock_zh_a_spot_em()
             for _, row in df_a.iterrows():
                 symbol = str(row['代码'])
                 name = str(row['名称'])
@@ -67,7 +70,8 @@ def sync_market_symbols() -> None:
 
         # 2. ETF名单
         try:
-            df_etf = ak.fund_etf_spot_em()
+            with domestic_direct_connection():
+                df_etf = ak.fund_etf_spot_em()
             for _, row in df_etf.iterrows():
                 symbol = str(row['代码'])
                 name = str(row['名称'])
@@ -84,7 +88,8 @@ def sync_market_symbols() -> None:
 
         # 3. LOF名单
         try:
-            df_lof = ak.fund_lof_spot_em()
+            with domestic_direct_connection():
+                df_lof = ak.fund_lof_spot_em()
             for _, row in df_lof.iterrows():
                 symbol = str(row['代码'])
                 name = str(row['名称'])
@@ -101,7 +106,8 @@ def sync_market_symbols() -> None:
 
         # 4. 开放式基金
         try:
-            df_open = ak.fund_open_fund_daily_em()
+            with domestic_direct_connection():
+                df_open = ak.fund_open_fund_daily_em()
             for _, row in df_open.iterrows():
                 symbol = str(row['基金代码'])
                 name = str(row['基金简称'])
@@ -118,7 +124,8 @@ def sync_market_symbols() -> None:
 
         # 5. 港股名单
         try:
-            df_hk = ak.stock_hk_spot_em()
+            with domestic_direct_connection():
+                df_hk = ak.stock_hk_spot_em()
             for _, row in df_hk.iterrows():
                 code = str(row['代码'])  # AkShare 返回 5位零填充格式，如 00700
                 symbol = code.lstrip('0') or '0'  # 去掉前导零，至少保留一个 0；如 00700 -> 0700
@@ -136,7 +143,8 @@ def sync_market_symbols() -> None:
 
         # 6. 美股名单
         try:
-            df_us = ak.stock_us_spot_em()
+            with domestic_direct_connection():
+                df_us = ak.stock_us_spot_em()
             for _, row in df_us.iterrows():
                 code = str(row['代码'])  # AkShare 返回 编码.ticker 格式，如 105.AAPL
                 # 提取纯 ticker（AAPL）

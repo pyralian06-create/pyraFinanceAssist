@@ -27,6 +27,7 @@ try:
 except ImportError:
     ak = None
 
+from .network import domestic_direct_connection
 from .schemas import QuoteData, HistoricalBar
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,8 @@ def get_quote(symbol: str = 'Au99.99') -> QuoteData:
     try:
         # 尝试实时 API
         logger.debug(f"  → 尝试获取实时报价...")
-        df_tick = ak.spot_quotations_sge(symbol=symbol)
+        with domestic_direct_connection():
+            df_tick = ak.spot_quotations_sge(symbol=symbol)
 
         if df_tick is not None and not df_tick.empty:
             # 取最后一行（最新报价）
@@ -155,7 +157,8 @@ def get_history(symbol: str = 'Au99.99') -> List[HistoricalBar]:
 
     try:
         logger.info(f"📊 拉取黄金 {symbol} 全部历史数据...")
-        df = ak.spot_hist_sge(symbol=symbol)
+        with domestic_direct_connection():
+            df = ak.spot_hist_sge(symbol=symbol)
 
         if df.empty:
             logger.warning(f"⚠️ 黄金 {symbol} 无历史数据")
