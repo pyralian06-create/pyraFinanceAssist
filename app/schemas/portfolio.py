@@ -48,6 +48,8 @@ class PortfolioSummary(BaseModel):
     total_pnl_percent: str  # 总盈亏比例
     realized_pnl: Decimal  # 已实现盈亏 (已卖出部分)
     positions: List[PositionDetail]  # 所有持仓明细
+    today_pnl_cny: Optional[Decimal] = None   # 今日盈亏金额（CNY，相对上一有效日收盘）
+    today_pnl_percent: Optional[float] = None  # 今日收益率 %
     data_update_time: Optional[datetime] = None  # 行情数据最后更新时间
 
     class Config:

@@ -47,6 +47,18 @@ class TodayPnLResponse(BaseModel):
     source: str = "db"  # "db" 表示从库读取，"realtime" 表示实时估算
 
 
+class TodayLegPnLRow(BaseModel):
+    """今日单标的实时盈亏明细"""
+    symbol: str
+    asset_type: str
+    quantity: Decimal                       # 当前持仓数量
+    current_price_cny: Decimal             # 实时价格（CNY）
+    market_value_cny: Decimal              # 当前市值（CNY）
+    prev_market_value_cny: Decimal         # 上一有效日市值（CNY），0 表示无历史基准
+    daily_pnl_cny: Decimal                 # 今日盈亏金额（CNY）
+    daily_pnl_percent: Optional[float] = None  # 今日收益率 %
+
+
 class DailyPnLResponse(BaseModel):
     """GET /api/portfolio/daily-pnl 完整响应"""
     start: date

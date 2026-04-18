@@ -12,6 +12,7 @@ from typing import Optional, List
 from app.models.database import get_db
 from app.models.trade import Trade
 from app.schemas.trade import TradeCreate, TradeResponse, TradeUpdate
+from app.services.daily_refresh import trigger_rebuild_from
 
 router = APIRouter()
 
@@ -57,6 +58,7 @@ def create_trade(
     db.add(db_trade)
     db.commit()
     db.refresh(db_trade)
+    trigger_rebuild_from(db_trade.trade_date.date())
     return db_trade
 
 
@@ -134,6 +136,7 @@ def update_trade(
 
     db.commit()
     db.refresh(trade)
+    trigger_rebuild_from(trade.trade_date.date())
     return trade
 
 
@@ -151,6 +154,55 @@ def delete_trade(
     if not trade:
         raise HTTPException(status_code=404, detail=f"交易记录 {trade_id} 不存在")
 
+    rebuild_start = trade.trade_date.date()
     db.delete(trade)
     db.commit()
+    trigger_rebuild_from(rebuild_start)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/batch", response_model=List[TradeResponse], status_code=status.HTTP_201_CREATED)
+def create_trades_batch(
+    trades: List[TradeCreate],
+    db: Session = Depends(get_db)
+):
+    """
+    批量创建交易记录
+
+    一次提交多笔流水，全部成功才提交（事务），任一失败则全部回滚。
+    重算区间取所有流水中最早的 trade_date，统一触发一次后台重算。
+
+    示例请求体：
+    ```json
+    [
+        {"asset_type": "STOCK_A", "symbol": "sh600519", "trade_date": "2024-01-15T10:00:00",
+         "trade_type": "BUY", "price": 1700.0, "quantity": 100},
+        {"asset_type": "FUND", "symbol": "510300", "trade_date": "2024-01-16T09:30:00",
+         "trade_type": "BUY", "price": 4.5, "quantity": 1000}
+    ]
+    ```
+    """
+    if not trades:
+        raise HTTPException(status_code=400, detail="至少需要一条交易记录")
+
+    db_trades = [
+        Trade(
+            asset_type=t.asset_type.upper(),
+            symbol=t.symbol,
+            trade_date=t.trade_date,
+            trade_type=t.trade_type.upper(),
+            price=t.price,
+            quantity=t.quantity,
+            commission=t.commission,
+            notes=t.notes,
+        )
+        for t in trades
+    ]
+    db.add_all(db_trades)
+    db.commit()
+    for t in db_trades:
+        db.refresh(t)
+
+    earliest = min(t.trade_date.date() for t in db_trades)
+    trigger_rebuild_from(earliest)
+    return db_trades

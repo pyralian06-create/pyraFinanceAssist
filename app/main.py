@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from app.models import init_db
 from app.config import settings
 from app.services.market_info import sync_market_symbols
+from app.services.daily_refresh import start_daily_refresh, stop_daily_refresh
 
 # ==================== 日志配置 ====================
 logging.basicConfig(
@@ -48,11 +49,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ 触发同步任务失败: {e}")
 
+    # 3. 启动每日收益自动刷新调度器
+    try:
+        start_daily_refresh()
+    except Exception as e:
+        logger.error(f"❌ 启动每日刷新调度器失败: {e}")
+
     logger.info("✅ 应用启动完成")
     yield
 
     # ========== 关闭阶段 ==========
     logger.info("🛑 关闭应用...")
+    stop_daily_refresh()
     logger.info("✅ 应用关闭完成")
 
 

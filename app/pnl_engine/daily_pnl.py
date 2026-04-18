@@ -335,6 +335,7 @@ def get_today_pnl(db: Session, today: Optional[date] = None) -> Optional[Dict]:
             "market_value": total_mv,
             "daily_pnl": total_pnl,
             "daily_pnl_percent": round(pnl_pct, 4) if pnl_pct is not None else None,
+            "_from_db": True,
         }
 
     # 库中无今日数据 → 用实时行情临时估算
@@ -376,3 +377,65 @@ def get_today_pnl(db: Session, today: Optional[date] = None) -> Optional[Dict]:
         "daily_pnl": daily_pnl,
         "daily_pnl_percent": round(pnl_pct, 4) if pnl_pct is not None else None,
     }
+
+
+def get_today_pnl_legs(db: Session, positions: list, today: Optional[date] = None) -> List[Dict]:
+    """
+    基于已获取的实时持仓数据，计算每个标的今日盈亏明细。
+
+    复用 calculate_portfolio 返回的 positions（PositionDetail 列表），避免重复拉取行情。
+    对比各标的在 position_daily_marks 中最近一条记录（昨日市值 CNY）作为基准。
+
+    Args:
+        db: SQLAlchemy session
+        positions: calculate_portfolio 返回的 PositionDetail 列表（含 current_price）
+        today: 计算日期，默认为今天
+
+    Returns:
+        每条为一个标的的今日盈亏字典，按当前市值降序排列
+    """
+    from datetime import date as date_cls
+
+    if today is None:
+        today = date_cls.today()
+
+    result: List[Dict] = []
+    for pos in positions:
+        if pos.holding_quantity <= Decimal("0"):
+            continue
+
+        # 折算今日市值为 CNY
+        fx = get_fx_rate_for_asset(pos.asset_type, today)
+        price_cny = pos.current_price * fx
+        mv_today = pos.holding_quantity * price_cny
+
+        # 从 position_daily_marks 取该标的最近一日市值作为昨日基准
+        prev_row = (
+            db.query(PositionDailyMark)
+            .filter(
+                PositionDailyMark.asset_type == pos.asset_type,
+                PositionDailyMark.symbol == pos.symbol,
+                PositionDailyMark.mark_date < today,
+            )
+            .order_by(PositionDailyMark.mark_date.desc())
+            .first()
+        )
+        prev_mv = Decimal(str(prev_row.market_value_cny)) if prev_row else Decimal("0")
+
+        leg_pnl = mv_today - prev_mv
+        leg_pct = float(leg_pnl / prev_mv * 100) if prev_mv > Decimal("0") else None
+
+        result.append({
+            "symbol": pos.symbol,
+            "asset_type": pos.asset_type,
+            "name": pos.name or "",
+            "quantity": pos.holding_quantity,
+            "current_price_cny": price_cny,
+            "market_value_cny": mv_today,
+            "prev_market_value_cny": prev_mv,
+            "daily_pnl_cny": leg_pnl,
+            "daily_pnl_percent": round(leg_pct, 4) if leg_pct is not None else None,
+        })
+
+    result.sort(key=lambda x: x["market_value_cny"], reverse=True)
+    return result

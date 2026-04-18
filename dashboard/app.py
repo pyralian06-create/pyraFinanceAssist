@@ -119,7 +119,7 @@ st.divider()
 
 portfolio = get_portfolio_data()
 if portfolio:
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric(
@@ -134,7 +134,7 @@ if portfolio:
             "📈 浮动盈亏",
             f"¥{total_pnl:+,.2f}",
             delta=portfolio['total_pnl_percent'],
-            delta_color="inverse"  # 正数绿色，负数红色
+            delta_color="inverse"
         )
 
     with col3:
@@ -144,6 +144,20 @@ if portfolio:
             f"¥{realized:+,.2f}",
             delta=None
         )
+
+    with col4:
+        today_pnl = portfolio.get("today_pnl_cny")
+        today_pct = portfolio.get("today_pnl_percent")
+        if today_pnl is not None:
+            pct_str = f"{today_pct:+.2f}%" if today_pct is not None else None
+            st.metric(
+                "📅 今日盈亏",
+                f"¥{float(today_pnl):+,.2f}",
+                delta=pct_str,
+                delta_color="inverse"
+            )
+        else:
+            st.metric("📅 今日盈亏", "无基准数据", help="需先在「每日收益看板」执行一次历史数据重算")
 
 st.divider()
 

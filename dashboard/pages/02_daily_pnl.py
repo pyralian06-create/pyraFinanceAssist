@@ -155,6 +155,50 @@ else:
     for c in [col1, col2, col3, col4]:
         c.metric("—", "无数据")
 
+# ── 今日持仓明细（实时，按标的拆分）────────────────────────────
+
+st.subheader("📋 今日各持仓收益明细")
+
+legs_today, legs_today_err = api_get("/portfolio/today-pnl/legs", timeout=60)
+
+if legs_today_err:
+    st.warning(f"⚠️ 获取持仓明细失败: {legs_today_err}")
+elif not legs_today:
+    st.info("📭 暂无持仓数据。")
+else:
+    df_today = pd.DataFrame(legs_today)
+    df_today["market_value_cny"] = df_today["market_value_cny"].astype(float)
+    df_today["daily_pnl_cny"] = df_today["daily_pnl_cny"].astype(float)
+    df_today["daily_pnl_percent"] = pd.to_numeric(df_today["daily_pnl_percent"], errors="coerce")
+    df_today["current_price_cny"] = df_today["current_price_cny"].astype(float)
+    df_today["prev_market_value_cny"] = df_today["prev_market_value_cny"].astype(float)
+    df_today["quantity"] = df_today["quantity"].astype(float)
+
+    # 格式化展示列
+    df_display_today = pd.DataFrame({
+        "代码": df_today["symbol"],
+        "名称": df_today.get("name", pd.Series([""] * len(df_today))),
+        "资产类型": df_today["asset_type"],
+        "持仓数量": df_today["quantity"].map(lambda x: f"{x:,.2f}"),
+        "现价(CNY)": df_today["current_price_cny"].map(lambda x: f"¥{x:,.4f}"),
+        "当前市值(CNY)": df_today["market_value_cny"].map(lambda x: f"¥{x:,.2f}"),
+        "今日盈亏(CNY)": df_today["daily_pnl_cny"].map(lambda x: fmt_cny(x, sign=True)),
+        "今日收益率": df_today["daily_pnl_percent"].map(
+            lambda x: fmt_pct(x) if pd.notna(x) else "—"
+        ),
+    })
+
+    # 用 Streamlit dataframe 并高亮今日盈亏列
+    def _color_pnl(val: str) -> str:
+        if val.startswith("+"):
+            return "color: #26a69a; font-weight: bold"
+        if val.startswith("-") or (val.startswith("¥-")):
+            return "color: #ef5350; font-weight: bold"
+        return ""
+
+    styled = df_display_today.style.map(_color_pnl, subset=["今日盈亏(CNY)", "今日收益率"])
+    st.dataframe(styled, use_container_width=True, hide_index=True)
+
 st.divider()
 
 # ── 2. 历史日曲线 ─────────────────────────────────────────────

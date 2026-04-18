@@ -13,6 +13,7 @@ from app.pnl_engine.daily_pnl import (
     query_portfolio_daily_series,
     query_leg_daily_series,
     get_today_pnl,
+    get_today_pnl_legs,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "query_portfolio_daily_series",
     "query_leg_daily_series",
     "get_today_pnl",
+    "get_today_pnl_legs",
 ]

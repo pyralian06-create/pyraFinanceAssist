@@ -26,12 +26,14 @@ from app.pnl_engine import (
     query_portfolio_daily_series,
     query_leg_daily_series,
     get_today_pnl,
+    get_today_pnl_legs,
 )
 from app.schemas.portfolio import PortfolioSummary
 from app.schemas.daily_pnl import (
     DailyPnLRow,
     DailyPnLResponse,
     TodayPnLResponse,
+    TodayLegPnLRow,
     PositionDailyMarkRow,
 )
 
@@ -62,6 +64,18 @@ def get_portfolio_summary(
     start_time = time.time()
 
     result = calculate_portfolio(db, asset_type_filter=asset_type)
+
+    # 复用已拉取的 positions 现价，计算今日盈亏（仅做 DB 查询，不重复请求行情）
+    if result.positions:
+        legs = get_today_pnl_legs(db, result.positions)
+        if legs:
+            total_today_pnl = sum(Decimal(str(leg["daily_pnl_cny"])) for leg in legs)
+            total_prev_mv = sum(Decimal(str(leg["prev_market_value_cny"])) for leg in legs)
+            result.today_pnl_cny = total_today_pnl
+            result.today_pnl_percent = (
+                round(float(total_today_pnl / total_prev_mv * 100), 4)
+                if total_prev_mv > Decimal("0") else None
+            )
 
     from datetime import datetime as _dt
     result.data_update_time = _dt.now()
@@ -99,6 +113,30 @@ def get_today_pnl_endpoint(
         daily_pnl_percent=result["daily_pnl_percent"],
         source=source,
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# 2b. 今日各持仓盈亏明细（实时，按标的拆分）
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/today-pnl/legs", response_model=List[TodayLegPnLRow])
+def get_today_pnl_legs_endpoint(
+    db: Session = Depends(get_db)
+):
+    """
+    获取今日各持仓实时盈亏明细（按标的拆分，金额均为人民币）
+
+    - 实时行情由 calculate_portfolio 统一拉取，本接口直接复用，不重复请求
+    - 与上一有效日 position_daily_marks 记录对比得出今日盈亏
+    - 无历史基准时 prev_market_value_cny=0，daily_pnl_cny 仍正常展示
+    - 按当前市值降序返回
+    """
+    portfolio = calculate_portfolio(db)
+    if not portfolio.positions:
+        return []
+
+    legs = get_today_pnl_legs(db, portfolio.positions)
+    return [TodayLegPnLRow(**leg) for leg in legs]
 
 
 # ─────────────────────────────────────────────────────────────
